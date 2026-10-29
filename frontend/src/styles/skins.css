@@ -1,0 +1,502 @@
+/* Disguise skins. They wrap the same reading canvas with a different chrome;
+ * the words on screen never change, only the furniture around them. */
+
+.skin-root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------- Word */
+
+.word-skin {
+  background: #f3f2f1;
+  color: #323130;
+  font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+  font-size: 12px;
+}
+
+.word-titlebar {
+  height: 30px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 0 10px;
+  background: #f3f2f1;
+  --wails-draggable: drag;
+  user-select: none;
+}
+.word-titlebar .qat {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0.72;
+}
+.word-titlebar .qat i {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.word-titlebar .doc-title {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  color: #444;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.word-titlebar .win {
+  display: flex;
+  --wails-draggable: no-drag;
+}
+.word-titlebar .win button {
+  width: 46px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #444;
+}
+.word-titlebar .win button:hover {
+  background: #e6e4e2;
+}
+.word-titlebar .win button.close:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+.word-ribbon {
+  flex: none;
+  background: #fff;
+  border-bottom: 1px solid #e1dfdd;
+  --wails-draggable: no-drag;
+}
+.word-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 8px;
+  height: 30px;
+  align-items: flex-end;
+}
+.word-tabs span {
+  padding: 5px 12px 6px;
+  font-size: 12px;
+  color: #444;
+  border-radius: 4px 4px 0 0;
+  cursor: default;
+}
+.word-tabs span.on {
+  color: #1b5fbf;
+  box-shadow: inset 0 -2px 0 #2b579a;
+}
+.word-tabs span:hover {
+  background: #f3f2f1;
+}
+.word-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 62px;
+  padding: 0 10px;
+  border-top: 1px solid #f3f2f1;
+  color: #444;
+}
+.word-tools .tool {
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  color: #444;
+}
+.word-tools .tool:hover {
+  background: #eae8e6;
+}
+.word-tools .tool.big {
+  width: 34px;
+  height: 34px;
+  font-size: 15px;
+}
+.word-tools .sep {
+  width: 1px;
+  height: 26px;
+  background: #e1dfdd;
+  margin: 0 5px;
+}
+.word-tools .selectish {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 96px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid #d0cecc;
+  border-radius: 3px;
+  font-size: 11.5px;
+  background: #fff;
+}
+
+.word-ruler {
+  flex: none;
+  height: 20px;
+  margin: 0 42px;
+  border-bottom: 1px solid #e1dfdd;
+  background-image: repeating-linear-gradient(
+    90deg,
+    #c8c6c4 0 1px,
+    transparent 1px 48px
+  );
+  opacity: 0.75;
+}
+
+.word-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  padding: 18px 42px 10px;
+  overflow: hidden;
+  background: #f3f2f1;
+}
+
+.word-paper {
+  position: relative;
+  height: 100%;
+  width: min(760px, calc(100% - 80px));
+  background: #fff;
+  border: 1px solid #e1dfdd;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.word-status {
+  flex: none;
+  height: 23px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 12px;
+  background: #f3f2f1;
+  border-top: 1px solid #e1dfdd;
+  font-size: 11px;
+  color: #605e5c;
+  --wails-draggable: no-drag;
+}
+.word-status .spacer {
+  flex: 1;
+}
+.word-status .zoom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.word-page-badge {
+  position: absolute;
+  right: 14px;
+  top: 10px;
+  font-size: 10.5px;
+  color: #a19f9d;
+  pointer-events: none;
+}
+
+/* Word skin makes the canvas behave like a document page. */
+.word-paper .reader {
+  background: transparent;
+  --r-bg: #fff;
+}
+.word-paper .reader-stage {
+  padding: 0;
+  width: 100%;
+}
+.word-paper .paper {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ---------------------------------------------------------------- VS Code */
+
+.vscode-skin {
+  background: #1e1e1e;
+  color: #cccccc;
+  font-family: 'Cascadia Mono', Consolas, 'Microsoft YaHei UI', monospace;
+  font-size: 12px;
+}
+
+.vs-titlebar {
+  height: 32px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 0 10px;
+  background: #3c3c3c;
+  color: #cccccc;
+  --wails-draggable: drag;
+  user-select: none;
+  font-size: 12px;
+}
+.vs-titlebar .menu {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+.vs-titlebar .menu span {
+  cursor: default;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.vs-titlebar .menu span:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.vs-titlebar .center {
+  flex: 1;
+  text-align: center;
+  opacity: 0.72;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+}
+.vs-titlebar .win {
+  display: flex;
+  --wails-draggable: no-drag;
+}
+.vs-titlebar .win button {
+  width: 46px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ccc;
+}
+.vs-titlebar .win button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.vs-titlebar .win button.close:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+.vs-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.vs-activity {
+  width: 48px;
+  flex: none;
+  background: #333333;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 6px;
+  gap: 2px;
+}
+.vs-activity button {
+  width: 48px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #858585;
+  border-left: 2px solid transparent;
+}
+.vs-activity button.on {
+  color: #ffffff;
+  border-left-color: #ffffff;
+}
+.vs-activity button:hover {
+  color: #ddd;
+}
+
+.vs-explorer {
+  width: 214px;
+  flex: none;
+  background: #252526;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.vs-explorer header {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 0 14px;
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #bbbbbb;
+}
+.vs-explorer .folder {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  color: #cccccc;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.vs-explorer .tree {
+  flex: 1;
+  overflow: auto;
+  padding-bottom: 10px;
+}
+.vs-explorer .tree-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 10px 0 22px;
+  font-size: 12px;
+  color: #cccccc;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vs-explorer .tree-item:hover {
+  background: #2a2d2e;
+}
+.vs-explorer .tree-item.on {
+  background: #37373d;
+}
+.vs-explorer .tree-item .ext {
+  margin-left: auto;
+  font-size: 10px;
+  color: #8a8a8a;
+}
+
+.vs-editor {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #1e1e1e;
+}
+
+.vs-tabs {
+  height: 35px;
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  background: #252526;
+  overflow: hidden;
+}
+.vs-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: #969696;
+  background: #2d2d2d;
+  border-right: 1px solid #252526;
+  max-width: 220px;
+}
+.vs-tab.on {
+  background: #1e1e1e;
+  color: #ffffff;
+  border-top: 1px solid #007acc;
+}
+.vs-tab .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #519aba;
+}
+
+.vs-breadcrumb {
+  height: 22px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 14px;
+  font-size: 11.5px;
+  color: #969696;
+  background: #1e1e1e;
+}
+.vs-breadcrumb .cur {
+  color: #cccccc;
+}
+
+.vs-editor-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+.vs-editor-area .reader {
+  background: transparent;
+  --r-bg: #1e1e1e;
+}
+.vs-editor-area .reader-stage {
+  padding: 8px 6px 0 0;
+  justify-content: flex-start;
+}
+.vs-editor-area .paper {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+.vs-editor-area .viewport {
+  cursor: text;
+}
+
+.vs-status {
+  height: 22px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 10px;
+  background: #007acc;
+  color: #ffffff;
+  font-size: 11px;
+  --wails-draggable: no-drag;
+}
+.vs-status .spacer {
+  flex: 1;
+}
+.vs-minimap {
+  width: 62px;
+  flex: none;
+  background: #1e1e1e;
+  border-left: 1px solid #2b2b2b;
+  padding: 6px 4px;
+  overflow: hidden;
+  opacity: 0.55;
+}
+.vs-minimap i {
+  display: block;
+  height: 2px;
+  margin-bottom: 2px;
+  border-radius: 1px;
+  background: #4a4a4a;
+}
+.vs-minimap i.w {
+  background: #6e6e6e;
+}
+.vs-minimap i.c {
+  background: #3f6f9c;
+}
+
+/* The skins must not fight the theme's own background painting. */
+.skin-root .gutter {
+  padding-left: 10px;
+}

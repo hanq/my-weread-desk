@@ -1,0 +1,27 @@
+# 构建产物
+build/bin
+# 前端构建产物；保留 .gitkeep，使 go:embed 在全新克隆下也能编译
+frontend/dist/*
+!frontend/dist/.gitkeep
+frontend/wailsjs
+
+# 依赖
+node_modules
+
+# 开发期临时文件
+.devtmp
+*.log
+
+# 本地数据（绝不提交凭据与缓存）
+*.db
+*.db-shm
+*.db-wal
+settings.json
+credentials.bin
+device.id
+fingerprint
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
