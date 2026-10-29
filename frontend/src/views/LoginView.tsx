@@ -62,7 +62,7 @@ export function LoginView() {
       if (!alive.current || gen !== generation.current) return;
       setQr(code);
       setPhase('waiting');
-      setMessage('请使用微信读书 App 扫码');
+      setMessage('请使用微信扫码，并在手机上确认登录');
       setRemaining(Math.max(0, code.expires - Math.floor(Date.now() / 1000)));
     } catch (e) {
       if (!alive.current || gen !== generation.current) return;
@@ -183,7 +183,7 @@ export function LoginView() {
     <div className="login-screen">
       <div className="login-copy">
         <div className="mark">
-          <Icon name="book" size={24} />
+          <img src="/weread-icon.png" alt="微信读书" />
         </div>
         <h1>
           你的书架，

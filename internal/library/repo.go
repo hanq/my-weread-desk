@@ -86,7 +86,7 @@ func (s *Store) Books() ([]weread.Book, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rows, err := s.db.Query(`SELECT ` + bookColumns + `, shelf_order FROM book
-		WHERE in_shelf=1 ORDER BY shelf_order ASC, last_read DESC`)
+		WHERE in_shelf=1 ORDER BY last_read DESC, update_at DESC, shelf_order ASC`)
 	if err != nil {
 		return nil, err
 	}

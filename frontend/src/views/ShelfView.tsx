@@ -7,11 +7,13 @@ import type { Book } from '../types';
 
 type Filter = 'all' | 'reading' | 'finished' | 'mp';
 type Layout = 'grid' | 'list';
+type Sort = 'recent' | 'added' | 'title';
 
 export function ShelfView() {
   const app = useApp();
   const [filter, setFilter] = useState<Filter>('all');
   const [layout, setLayout] = useState<Layout>('grid');
+  const [sort, setSort] = useState<Sort>('recent');
   const [query, setQuery] = useState('');
   const [menu, setMenu] = useState<{ book: Book; x: number; y: number } | null>(null);
 
@@ -22,8 +24,21 @@ export function ShelfView() {
     if (filter === 'mp') list = list.filter((b) => b.isMp);
     const q = query.trim().toLowerCase();
     if (q) list = list.filter((b) => b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q));
-    return list;
-  }, [app.books, filter, query]);
+
+    // The server returns the shelf in its own order, so sort it locally.
+    // `lastRead` is the last reading time, `updateAt` the shelf entry time.
+    const sorted = [...list];
+    if (sort === 'recent') {
+      sorted.sort(
+        (a, b) => b.lastRead - a.lastRead || b.updateAt - a.updateAt || a.title.localeCompare(b.title, 'zh-CN'),
+      );
+    } else if (sort === 'added') {
+      sorted.sort((a, b) => b.updateAt - a.updateAt || a.title.localeCompare(b.title, 'zh-CN'));
+    } else {
+      sorted.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'));
+    }
+    return sorted;
+  }, [app.books, filter, query, sort]);
 
   const open = (book: Book) => {
     if (book.isMp) {
@@ -84,6 +99,19 @@ export function ShelfView() {
           />
         </div>
         <div className="grow" />
+        <div className="seg">
+          {(
+            [
+              ['recent', '最近阅读'],
+              ['added', '加入书架'],
+              ['title', '书名'],
+            ] as [Sort, string][]
+          ).map(([k, label]) => (
+            <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>
+              {label}
+            </button>
+          ))}
+        </div>
         <button className="btn btn-ghost" onClick={() => navigate({ name: 'search' })}>
           <Icon name="search" size={14} /> 搜索书城
         </button>

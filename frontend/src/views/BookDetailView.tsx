@@ -18,6 +18,8 @@ export function BookDetailView({ bookId }: { bookId: string }) {
   useEffect(() => {
     let alive = true;
     setLoading(true);
+    setDetail(null);
+    setError('');
     api
       .bookDetail(bookId)
       .then((d) => alive && setDetail(d))
@@ -33,21 +35,37 @@ export function BookDetailView({ bookId }: { bookId: string }) {
 
   if (loading) {
     return (
-      <div className="empty">
-        <div className="spinner" />
-        <span>正在加载书籍…</span>
-      </div>
+      <>
+        <div className="page-head">
+          <button className="icon-btn" onClick={() => navigate({ name: 'shelf' })} title="返回书架">
+            <Icon name="left" />
+          </button>
+          <h1 className="truncate">书籍详情</h1>
+        </div>
+        <div className="empty">
+          <div className="spinner" />
+          <span>正在加载书籍…</span>
+        </div>
+      </>
     );
   }
 
   if (!detail) {
     return (
-      <div className="empty">
-        <p>{error || '无法加载这本书'}</p>
-        <button className="btn" onClick={() => navigate({ name: 'shelf' })}>
-          返回书架
-        </button>
-      </div>
+      <>
+        <div className="page-head">
+          <button className="icon-btn" onClick={() => navigate({ name: 'shelf' })} title="返回书架">
+            <Icon name="left" />
+          </button>
+          <h1 className="truncate">书籍详情</h1>
+        </div>
+        <div className="empty">
+          <p>{error || '无法加载这本书'}</p>
+          <button className="btn" onClick={() => navigate({ name: 'shelf' })}>
+            返回书架
+          </button>
+        </div>
+      </>
     );
   }
 

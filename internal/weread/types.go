@@ -112,7 +112,7 @@ type ReaderState struct {
 type QRCode struct {
 	UID     string `json:"uid"`
 	Payload string `json:"payload"`
-	Image   string `json:"image"` // data:image/png;base64,...
+	Image   string `json:"image"` // data:image/jpeg;base64,... (WeChat renders it) or data:image/png;base64,...
 	Expires int64  `json:"expires"`
 }
 

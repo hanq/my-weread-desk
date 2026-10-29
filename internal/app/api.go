@@ -130,14 +130,57 @@ func (a *App) Shutdown(ctx context.Context) {
 	_ = a.store.Close()
 }
 
+// applyWindowSettings restores the saved geometry once at startup and then
+// applies the behavioural flags. Geometry is deliberately not re-applied from
+// SaveSettings/UpdateSetting: those run on every settings edit, and moving the
+// window on each edit is both surprising and, with a relative-position API,
+// exactly how the window used to march off-screen.
 func (a *App) applyWindowSettings() {
+	a.restoreWindowGeometry()
+	a.applyWindowFlags()
+}
+
+// restoreWindowGeometry places the window at the remembered absolute position.
+//
+// The position is validated against the monitors that are connected right now:
+// a saved rectangle from an unplugged or rearranged monitor is re-centred on
+// the primary work area instead of leaving the window off-screen, where it
+// would still show a taskbar preview but could never be brought back.
+func (a *App) restoreWindowGeometry() {
+	if a.ctx == nil {
+		return
+	}
 	s := a.settings.Get()
-	if s.Window.W > 0 && s.Window.H > 0 {
+	if s.Window.W <= 0 || s.Window.H <= 0 {
+		return
+	}
+
+	if s.Window.Remembered && (s.Window.X != 0 || s.Window.Y != 0) {
+		if rect, err := a.platform.RestoreBounds(s.Window.X, s.Window.Y, s.Window.W, s.Window.H); err == nil {
+			a.logf("恢复窗口位置：%d,%d %dx%d", rect.X, rect.Y, rect.W, rect.H)
+			return
+		} else {
+			a.logf("恢复窗口位置失败，改用默认尺寸：%v", err)
+		}
 		runtime.WindowSetSize(a.ctx, s.Window.W, s.Window.H)
+		// Only platforms without the absolute placement helper may use the
+		// Wails position API; on Windows it is relative to the current monitor
+		// and would reintroduce the off-screen bug.
+		if !a.platform.AbsolutePlacement() {
+			runtime.WindowSetPosition(a.ctx, s.Window.X, s.Window.Y)
+		}
+		return
 	}
-	if s.Window.Remembered && s.Window.X != 0 && s.Window.Y != 0 {
-		runtime.WindowSetPosition(a.ctx, s.Window.X, s.Window.Y)
+
+	runtime.WindowSetSize(a.ctx, s.Window.W, s.Window.H)
+}
+
+// applyWindowFlags applies everything except geometry.
+func (a *App) applyWindowFlags() {
+	if a.ctx == nil {
+		return
 	}
+	s := a.settings.Get()
 	if s.Window.AlwaysOnTop {
 		runtime.WindowSetAlwaysOnTop(a.ctx, true)
 		_ = a.platform.SetTopmost(true)
@@ -172,7 +215,7 @@ func (a *App) SaveSettings(next config.Settings) (config.Settings, error) {
 	if err != nil {
 		return a.settings.Get(), err
 	}
-	a.applyWindowSettings()
+	a.applyWindowFlags()
 	a.syncWindowBackground()
 	return a.settings.Get(), nil
 }
@@ -370,6 +413,14 @@ func (a *App) saveWindowGeometry() {
 	}
 	w, h := runtime.WindowGetSize(a.ctx)
 	x, y := runtime.WindowGetPosition(a.ctx)
+	if rect, err := a.platform.WindowRect(); err == nil {
+		// Prefer the native rectangle: it is absolute and refuses to report a
+		// minimised window's bogus (-32000) position.
+		x, y = rect.X, rect.Y
+	} else if a.platform.AbsolutePlacement() {
+		a.logf("保存窗口位置失败：%v", err)
+		return
+	}
 	_ = a.settings.Update(func(s *config.Settings) {
 		s.Window.W = w
 		s.Window.H = h

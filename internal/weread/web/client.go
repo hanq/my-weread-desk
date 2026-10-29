@@ -91,6 +91,170 @@ func (c *Client) withRetry(ctx context.Context, fn func() error) error {
 	return fn()
 }
 
+// ---------------------------------------------------------------- shelf
+
+// shelfWire mirrors /web/shelf/sync. It is the browser view of the same shelf
+// the E-Ink endpoint serves, and is the only channel available to credentials
+// that were minted by the browser login (they carry a web session but no usable
+// API token).
+type shelfWire struct {
+	Books []struct {
+		BookID         weread.FlexString `json:"bookId"`
+		Title          string            `json:"title"`
+		Author         string            `json:"author"`
+		Cover          string            `json:"cover"`
+		Category       string            `json:"category"`
+		Intro          string            `json:"intro"`
+		Price          weread.FlexFloat  `json:"price"`
+		Paid           weread.FlexInt    `json:"paid"`
+		Secret         weread.FlexInt    `json:"secret"`
+		FinishReading  weread.FlexInt    `json:"finishReading"`
+		ReadUpdateTime weread.FlexInt    `json:"readUpdateTime"`
+		UpdateTime     weread.FlexInt    `json:"updateTime"`
+	} `json:"books"`
+	BookCount weread.FlexInt `json:"bookCount"`
+}
+
+// Shelf returns the account bookshelf through the cookie session.
+func (c *Client) Shelf(ctx context.Context) ([]weread.Book, error) {
+	q := url.Values{}
+	q.Set("synckey", "0")
+
+	var raw shelfWire
+	err := c.withRetry(ctx, func() error {
+		resp, err := c.get(ctx, "/web/shelf/sync", q)
+		if err != nil {
+			return err
+		}
+		if err := httpx.CheckEnvelope("web/shelf/sync", resp.Status, resp.Body); err != nil {
+			return err
+		}
+		return json.Unmarshal(resp.Body, &raw)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if raw.Books == nil && raw.BookCount.Int64() > 0 {
+		return nil, fmt.Errorf("%w: 书架响应缺少 books 字段", weread.ErrProtocolChanged)
+	}
+
+	out := make([]weread.Book, 0, len(raw.Books))
+	for _, b := range raw.Books {
+		id := b.BookID.String()
+		if id == "" {
+			continue
+		}
+		out = append(out, weread.Book{
+			ID:       id,
+			Title:    b.Title,
+			Author:   b.Author,
+			Cover:    b.Cover,
+			Category: b.Category,
+			Intro:    b.Intro,
+			Price:    b.Price.Float64(),
+			Paid:     b.Paid.Int64() == 1,
+			IsMP:     weread.IsMP(id),
+			Finished: b.FinishReading.Int64() == 1,
+			Secret:   b.Secret.Int64() == 1,
+			LastRead: b.ReadUpdateTime.Int64(),
+			UpdateAt: b.UpdateTime.Int64(),
+		})
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- search
+
+// searchWire mirrors /web/search/global.
+type searchWire struct {
+	Books []struct {
+		BookInfo struct {
+			BookID      weread.FlexString `json:"bookId"`
+			Title       string            `json:"title"`
+			Author      string            `json:"author"`
+			Cover       string            `json:"cover"`
+			Intro       string            `json:"intro"`
+			Category    string            `json:"category"`
+			WordCount   weread.FlexInt    `json:"wordCount"`
+			NewRating   weread.FlexFloat  `json:"newRating"`
+			Publisher   string            `json:"publisher"`
+			PublishTime string            `json:"publishTime"`
+			Price       weread.FlexFloat  `json:"price"`
+		} `json:"bookInfo"`
+	} `json:"books"`
+	Total   weread.FlexInt `json:"totalCount"`
+	HasMore weread.FlexInt `json:"hasMore"`
+	SID     string         `json:"sid"`
+}
+
+// Search queries the store through the cookie session. It is the fallback for
+// credentials that carry a browser session but no usable API token.
+func (c *Client) Search(ctx context.Context, keyword string, offset, count int) (*weread.SearchResult, error) {
+	if count <= 0 || count > 50 {
+		count = 20
+	}
+	q := url.Values{}
+	q.Set("keyword", keyword)
+	q.Set("maxIdx", strconv.Itoa(offset))
+	q.Set("count", strconv.Itoa(count))
+	q.Set("fragmentSize", "120")
+
+	var raw searchWire
+	err := c.withRetry(ctx, func() error {
+		resp, err := c.get(ctx, "/web/search/global", q)
+		if err != nil {
+			return err
+		}
+		if err := httpx.CheckEnvelope("web/search/global", resp.Status, resp.Body); err != nil {
+			return err
+		}
+		return json.Unmarshal(resp.Body, &raw)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result := &weread.SearchResult{SID: raw.SID, Query: keyword, Total: int(raw.Total.Int64())}
+	seen := map[string]bool{}
+	for _, hit := range raw.Books {
+		info := hit.BookInfo
+		id := info.BookID.String()
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		result.Books = append(result.Books, weread.Book{
+			ID:        id,
+			Title:     info.Title,
+			Author:    info.Author,
+			Cover:     info.Cover,
+			Category:  info.Category,
+			Intro:     info.Intro,
+			WordCount: int(info.WordCount.Int64()),
+			Rating:    normaliseRating(info.NewRating.Float64()),
+			Price:     info.Price.Float64(),
+			Publisher: info.Publisher,
+			PublishAt: info.PublishTime,
+		})
+	}
+	result.HasMore = raw.HasMore.Int64() != 0
+	if result.Total == 0 {
+		result.Total = len(result.Books)
+	}
+	return result, nil
+}
+
+// normaliseRating converts the browser channel's 0-1000 score to the 0-10
+// scale the UI renders.
+func normaliseRating(v float64) float64 {
+	if v > 10 {
+		return v / 100
+	}
+	return v
+}
+
+// ---------------------------------------------------------------- reader state
+
 // ReaderState loads `window.__INITIAL_STATE__` for a book (or a chapter).
 func (c *Client) ReaderState(ctx context.Context, bookID string, chapterUID int64) (*weread.ReaderState, error) {
 	path := "/web/reader/" + protocol.E(bookID)

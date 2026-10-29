@@ -40,6 +40,18 @@ func (m *Manager) RegisterHotkeys([]Hotkey, func(string)) error { return errUnsu
 // UnregisterHotkeys is a no-op.
 func (m *Manager) UnregisterHotkeys() {}
 
+// WorkAreas is unsupported; the restore path falls back to the Wails runtime.
+func (m *Manager) WorkAreas() []WorkArea { return nil }
+
+// AbsolutePlacement reports that the Wails position API is used instead.
+func (m *Manager) AbsolutePlacement() bool { return false }
+
+// WindowRect is unsupported.
+func (m *Manager) WindowRect() (Rect, error) { return Rect{}, errUnsupported }
+
+// RestoreBounds is unsupported.
+func (m *Manager) RestoreBounds(int, int, int, int) (Rect, error) { return Rect{}, errUnsupported }
+
 type platformError string
 
 func (e platformError) Error() string { return string(e) }

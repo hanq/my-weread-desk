@@ -40,9 +40,9 @@ func parseInitialState(page []byte) (*weread.ReaderState, error) {
 				Title  string            `json:"title"`
 				Author string            `json:"author"`
 			} `json:"bookInfo"`
-			PSVTS   string `json:"psvts"`
-			PCLTS   string `json:"pclts"`
-			Token   string `json:"token"`
+			PSVTS   weread.FlexString `json:"psvts"`
+			PCLTS   weread.FlexString `json:"pclts"`
+			Token   weread.FlexString `json:"token"`
 			Chapter struct {
 				ChapterUID weread.FlexInt `json:"chapterUid"`
 			} `json:"currentChapter"`
@@ -56,9 +56,9 @@ func parseInitialState(page []byte) (*weread.ReaderState, error) {
 		BookID:  raw.Reader.BookInfo.BookID.String(),
 		Title:   raw.Reader.BookInfo.Title,
 		Author:  raw.Reader.BookInfo.Author,
-		PSVTS:   raw.Reader.PSVTS,
-		PCLTS:   raw.Reader.PCLTS,
-		Token:   raw.Reader.Token,
+		PSVTS:   raw.Reader.PSVTS.String(),
+		PCLTS:   raw.Reader.PCLTS.String(),
+		Token:   raw.Reader.Token.String(),
 		Chapter: raw.Reader.Chapter.ChapterUID.Int64(),
 	}
 	return st, nil

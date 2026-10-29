@@ -34,7 +34,7 @@
 
 | 编号 | 功能 | 优先级 |
 |---|---|---|
-| A1 | 微信扫码登录（二维码 + 轮询 + 4 位验证码兜底） | P0 |
+| A1 | 微信扫码登录（微信 SDK 二维码 + 长轮询，E-Ink 令牌） | P0 |
 | A2 | 设备指纹 `wr_fp` 生成与持久化（防互踢） | P0 |
 | A3 | 凭据加密落盘（DPAPI / 文件权限） | P0 |
 | A4 | 令牌自动续期（Web renewal + E-Ink `/login`） | P0 |
@@ -383,31 +383,40 @@ App
 ```
 BootGate → 无凭据 → LoginView
   → 生成/加载 wr_fp
-  → GET /r/weread-skills（带 wr_fp）
-  → GET /api/auth/getLoginUid → uid
-  → 渲染二维码（uid → 微信扫码串）
-  → 轮询 getLoginInfo（同一 uid，长轮询 ~55s，客户端超时 75s，不重试）
-  → succeed → 写 cookies + accessToken/refreshToken (+ 可选 apiKey)
-  → 拉 /api/userInfo 展示昵称
+  → GET i.weread.qq.com/wxticket?nonceStr=weread → signature + timeStamp
+  → GET open.weixin.qq.com/connect/sdk/qrconnect（appid + signature）→ uuid + 二维码图
+  → 长轮询 long.open.weixin.qq.com/connect/l/qrconnect（同一 uuid，超时 70s，不重试）
+  → wx_errcode=405 且带 wx_code → POST i.weread.qq.com/login
+  → 写 accessToken/refreshToken + cookies（wr_vid/wr_skey/wr_fp）
+  → 拉 /api/userInfo 展示昵称（失败不影响登录）
   → 进入 Shell
 ```
 
-登录状态机（实测语义，详见 `docs/research/weread-ecosystem-research-2026-10-29.md` 第 8 节）：
+**必须走 E-Ink 客户端的微信扫码流程，不能复用网页端登录**：
+`weread.qq.com/api/auth/getLoginInfo` 返回的是网页会话（accessToken 为短串 `wr_skey`，
+refreshToken 形如 `web@...`）。该 accessToken 请求 `i.weread.qq.com` 会得到 `-2012 登录超时`，
+`web@...` refreshToken 请求 `/login` 会得到 `-2013 鉴权失败`，两者都无法用于书架、搜索、
+章节、进度等 API。只有 `/login` 用 `wx_code` 换出来的令牌才被 API 接受。
 
-| 服务端返回 | 处理 |
+登录状态机（微信 SDK 长轮询语义）：
+
+| `wx_errcode` | 处理 |
 |---|---|
-| `succeed:true` | 完成登录 |
-| `logicCode:""` 或 `LOGIN_TIMEOUT` | **继续轮询同一个 uid**（这是「还没人扫码」，不是二维码过期） |
-| `NEED_OTP` / `OTP_NOT_MATCH` / `OTP_EXPIRED` | 请求验证码；**暂停轮询**，每次提交只发一次请求 |
-| `LOGIN_CANCEL` / 未知值 / 会话超过 5 分钟 | 停止轮询，等用户手动刷新 |
+| `408` 或空/缺失 | **继续轮询同一个 uuid**（这是「还没人扫码」，不是二维码过期） |
+| `404` | 已扫码未确认，继续轮询，提示用户确认 |
+| `405` | 已确认；用 `wx_code` 调 `/login` 换令牌，缺 code 视为失败 |
+| `402` | 二维码过期，停止轮询 |
+| `403` | 用户在手机上取消，停止轮询 |
 | 空响应体 / 非 200 | 视为 pending |
 | 传输错误 / 非 JSON | 报错并按 3s→6s→12s→20s 退避，4 次后停止轮询 |
 
 硬性约束：
 
-1. **只有用户操作可以申请新二维码**；任何自动路径都不得重新调用 `getLoginUid`（否则变成请求风暴并触发风控）。
-2. 同一时刻只允许一个在途轮询请求。
-3. `getLoginInfo` 不得做传输层重试；空 `otp` 参数必须省略。
+1. **只有用户操作可以申请新二维码**；任何自动路径都不得重新调用 `wxticket`/`qrconnect`（否则变成请求风暴并触发风控）。
+2. 同一时刻只允许一个在途轮询请求；上一次的 `wx_errcode` 通过 `last` 回传，让服务端能挂起长轮询。
+3. 长轮询不得做传输层重试。
+4. 登录与续期必须使用同一套设备身份（deviceId、deviceName、deviceType、版本头），否则令牌会被判为盗用。
+5. `wr_rt` cookie 只写入 `web@` 开头的网页 refreshToken；E-Ink 令牌写进去会让网页续期接口拒绝整组 cookie。
 
 ### 6.2 打开一本书
 

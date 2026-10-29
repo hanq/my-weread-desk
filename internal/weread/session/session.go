@@ -8,11 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"my-weread-desk/internal/weread"
 	"my-weread-desk/internal/weread/auth"
+	"my-weread-desk/internal/weread/device"
 	"my-weread-desk/internal/weread/httpx"
 	"my-weread-desk/internal/weread/protocol"
 )
@@ -20,14 +22,6 @@ import (
 const (
 	einkBase = "https://i.weread.qq.com"
 	webBase  = "https://weread.qq.com"
-
-	deviceName = "BOOX"
-	deviceType = 3
-	appVersion = "2.1.2.10245900"
-	deviceUA   = "WeRead/2.1.2 WRBrand/Onyx wr_eink Dalvik/2.1.0 (Linux; U; Android 11; BOOX Build/onyx)"
-	channelID  = "900"
-	baseAPI    = "30"
-	osVersion  = "11"
 )
 
 // Session is the single source of truth for credentials.
@@ -121,13 +115,10 @@ func WebBase() string  { return webBase }
 func EinkBase() string { return einkBase }
 
 func (s *Session) applyEinkHeaders() {
-	s.einkClient.UserAgent = deviceUA
-	s.einkClient.SetHeader("baseapi", baseAPI)
-	s.einkClient.SetHeader("appver", appVersion)
-	s.einkClient.SetHeader("basever", appVersion)
-	s.einkClient.SetHeader("osver", osVersion)
-	s.einkClient.SetHeader("channelId", channelID)
-	s.einkClient.SetHeader("Accept", "application/json, text/plain, */*")
+	s.einkClient.UserAgent = device.UserAgent
+	for k, v := range device.Headers() {
+		s.einkClient.SetHeader(k, v)
+	}
 	if c := s.creds; c != nil && c.HasToken() {
 		s.einkClient.SetHeader("vid", c.VID)
 		s.einkClient.SetHeader("accessToken", c.AccessToken)
@@ -141,17 +132,26 @@ func (s *Session) applyEinkHeaders() {
 func (s *Session) RefreshEink(ctx context.Context) error {
 	s.refreshMu.Lock()
 	defer s.refreshMu.Unlock()
+	return s.refreshEinkLocked(ctx)
+}
 
+func (s *Session) refreshEinkLocked(ctx context.Context) error {
 	c := s.Credentials()
 	if c == nil || c.RefreshToken == "" || c.VID == "" {
 		return weread.ErrAuthRequired
+	}
+	// The browser login issues `web@...` refresh tokens, which /login rejects
+	// with -2013. Refreshing them can never succeed, so tell the user what to
+	// do instead of burning a request on it.
+	if strings.HasPrefix(c.RefreshToken, "web@") {
+		return weread.ErrLegacyLogin
 	}
 
 	timestamp := time.Now().UnixMilli()
 	random := int(time.Now().UnixNano()%1000) + 1
 	body := map[string]any{
 		"deviceId":     c.DeviceID,
-		"deviceName":   deviceName,
+		"deviceName":   device.Name,
 		"inBackground": 0,
 		"kickType":     1,
 		"random":       random,
@@ -160,7 +160,7 @@ func (s *Session) RefreshEink(ctx context.Context) error {
 		"signature":    protocol.SHA256Hex(strconv.FormatInt(timestamp, 10) + c.DeviceID + strconv.Itoa(random)),
 		"timestamp":    timestamp,
 		"trackId":      "",
-		"deviceType":   deviceType,
+		"deviceType":   device.Type,
 	}
 	var out struct {
 		VID          any    `json:"vid"`
@@ -197,10 +197,14 @@ func (s *Session) RefreshEink(ctx context.Context) error {
 	s.creds = &next
 	s.mu.Unlock()
 	s.applyEinkHeaders()
+	_ = s.webClient.SetCookies(webBase, next.Cookies)
 	return s.store.Save(&next)
 }
 
-// RefreshWeb renews the cookie session.
+// RefreshWeb renews the cookie session. The browser renewal endpoint needs the
+// `wr_rt` cookie, which only the browser login issues; credentials minted by
+// the E-Ink login have no such cookie, so the API token is refreshed instead
+// and `wr_skey` is reseeded from it.
 func (s *Session) RefreshWeb(ctx context.Context) error {
 	s.refreshMu.Lock()
 	defer s.refreshMu.Unlock()
@@ -211,7 +215,10 @@ func (s *Session) RefreshWeb(ctx context.Context) error {
 	}
 	merged, err := auth.RenewWeb(ctx, s.webClient, c.Cookies)
 	if err != nil {
-		return err
+		if rerr := s.refreshEinkLocked(ctx); rerr != nil {
+			return err
+		}
+		return nil
 	}
 	next := *c
 	next.Cookies = merged

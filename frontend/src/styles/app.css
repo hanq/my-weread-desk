@@ -558,12 +558,15 @@
   width: 46px;
   height: 46px;
   border-radius: 13px;
-  background: linear-gradient(145deg, var(--accent), #7a5cff);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  box-shadow: 0 12px 30px rgba(77, 132, 255, 0.34);
+  overflow: hidden;
+  background: #1c96ff;
+  box-shadow: 0 12px 30px rgba(28, 150, 255, 0.34);
+}
+.login-copy .mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .login-copy h1 {
   font-size: 30px;

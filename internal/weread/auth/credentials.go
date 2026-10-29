@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -39,11 +40,12 @@ func (c *Credentials) HasToken() bool {
 // Store persists credentials on disk, encrypting the payload with the OS
 // keystore when available.
 type Store struct {
-	mu       sync.RWMutex
-	dir      string
-	creds    *Credentials
-	deviceID string
-	fp       string
+	mu        sync.RWMutex
+	dir       string
+	creds     *Credentials
+	deviceID  string
+	fp        string
+	installID string
 }
 
 // NewStore loads credentials (if any) from dir.
@@ -151,6 +153,42 @@ func (s *Store) Fingerprint() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.fp
+}
+
+// InstallID is the stable per-install identifier the login handshake reports.
+func (s *Store) InstallID() string {
+	s.mu.RLock()
+	if s.installID != "" {
+		id := s.installID
+		s.mu.RUnlock()
+		return id
+	}
+	s.mu.RUnlock()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.installID != "" {
+		return s.installID
+	}
+	path := filepath.Join(s.dir, "install.id")
+	if raw, err := os.ReadFile(path); err == nil && len(raw) > 8 {
+		s.installID = strings.TrimSpace(string(raw))
+		return s.installID
+	}
+	// 26 random digits keep the shape of the reference client's install id.
+	digits := make([]byte, 26)
+	for i := range digits {
+		n, err := rand.Int(rand.Reader, big.NewInt(10))
+		if err != nil {
+			digits[i] = '0'
+			continue
+		}
+		digits[i] = byte('0' + n.Int64())
+	}
+	id := "eink31" + string(digits)
+	_ = os.WriteFile(path, []byte(id), 0o600)
+	s.installID = id
+	return id
 }
 
 const devicePrefix = "eink334691225"

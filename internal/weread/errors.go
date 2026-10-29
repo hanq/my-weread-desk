@@ -52,3 +52,8 @@ var ErrAuthRequired = errors.New("需要登录微信读书")
 // shape. It is surfaced verbatim so users can tell a protocol change apart
 // from a network failure.
 var ErrProtocolChanged = errors.New("微信读书接口格式已变化，请更新应用")
+
+// ErrLegacyLogin explains that the stored credentials came from the browser
+// login. Their access token is rejected by i.weread.qq.com (-2012) and their
+// `web@...` refresh token by /login (-2013), so the only fix is a fresh scan.
+var ErrLegacyLogin = errors.New("当前登录凭据来自旧版网页登录，请退出登录后重新扫码")

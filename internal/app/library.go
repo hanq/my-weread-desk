@@ -35,6 +35,20 @@ func (a *App) SyncShelf() ([]weread.Book, error) {
 func (a *App) syncShelf(ctx context.Context) ([]weread.Book, error) {
 	books, err := a.eink.Shelf(ctx)
 	if err != nil {
+		// Credentials minted by the browser login carry a cookie session but no
+		// API token, so the E-Ink shelf answers -2012. The browser shelf serves
+		// the same account and keeps the UI usable without a re-login.
+		if a.session.Credentials().HasWebSession() {
+			if webBooks, werr := a.web.Shelf(ctx); werr == nil {
+				a.logf("E-Ink 书架不可用，已改用网页会话：%v", err)
+				books = webBooks
+				err = nil
+			} else {
+				a.logf("网页书架同步失败：%v", werr)
+			}
+		}
+	}
+	if err != nil {
 		// Fall back to the cache so the UI stays usable offline.
 		cached, cerr := a.store.Books()
 		if cerr == nil && len(cached) > 0 {
@@ -63,12 +77,31 @@ func (a *App) Search(keyword, scope string, page int) (*weread.SearchResult, err
 	defer cancel()
 	res, err := a.eink.Search(ctx, keyword, scope, page*20, 20)
 	if err != nil {
+		// Credentials minted by the browser login carry a cookie session but no
+		// usable API token. The browser store search serves the same catalogue,
+		// so searching keeps working until the user re-scans.
+		if a.session.Credentials().HasWebSession() {
+			if webRes, werr := a.web.Search(ctx, keyword, page*20, 20); werr == nil {
+				a.logf("E-Ink 搜索不可用，已改用网页会话：%v", err)
+				res, err = webRes, nil
+			} else {
+				a.logf("网页搜索失败：%v", werr)
+			}
+		}
+	}
+	if err != nil {
 		return nil, err
 	}
 	for _, b := range res.Books {
 		_ = a.store.UpsertBook(b)
 	}
 	return res, nil
+}
+
+// webSession reports whether the cookie channel can serve as a fallback.
+func (a *App) webSession() bool {
+	c := a.session.Credentials()
+	return c != nil && c.HasWebSession()
 }
 
 // BookDetail bundles everything the detail screen needs.
@@ -104,6 +137,14 @@ func (a *App) BookDetail(bookID string) (*BookDetail, error) {
 	if info, err := a.eink.Info(ctx, bookID); err == nil {
 		detail.Book = *info
 		_ = a.store.UpsertBook(*info)
+	} else if a.webSession() {
+		if info, werr := a.web.BookInfo(ctx, bookID); werr == nil {
+			detail.Book = *info
+			_ = a.store.UpsertBook(*info)
+		} else {
+			detail.Offline = len(detail.Chapters) > 0
+			a.logf("读取书籍详情失败：%v（网页通道：%v）", err, werr)
+		}
 	} else {
 		detail.Offline = len(detail.Chapters) > 0
 		a.logf("读取书籍详情失败：%v", err)
@@ -112,11 +153,23 @@ func (a *App) BookDetail(bookID string) (*BookDetail, error) {
 	if chapters, err := a.eink.Chapters(ctx, bookID); err == nil && len(chapters) > 0 {
 		detail.Chapters = chapters
 		_ = a.store.ReplaceChapters(bookID, chapters)
+	} else if a.webSession() {
+		if chapters, _, werr := a.web.Catalog(ctx, bookID); werr == nil && len(chapters) > 0 {
+			detail.Chapters = chapters
+			_ = a.store.ReplaceChapters(bookID, chapters)
+		}
 	}
 
 	if p, err := a.eink.Progress(ctx, bookID); err == nil {
 		detail.Progress = p
 		_ = a.store.SaveProgress(*p, false)
+	} else if a.webSession() {
+		if p, werr := a.web.Progress(ctx, bookID); werr == nil {
+			detail.Progress = p
+			_ = a.store.SaveProgress(*p, false)
+		} else if p, serr := a.store.Progress(bookID); serr == nil {
+			detail.Progress = p
+		}
 	} else if p, err := a.store.Progress(bookID); err == nil {
 		detail.Progress = p
 	}
@@ -127,6 +180,10 @@ func (a *App) BookDetail(bookID string) (*BookDetail, error) {
 	detail.ChapterCount = len(detail.Chapters)
 	if notes, err := a.eink.Notes(ctx, bookID); err == nil {
 		detail.Notes = notes
+	} else if a.webSession() {
+		if notes, werr := a.web.Notes(ctx, bookID); werr == nil {
+			detail.Notes = notes
+		}
 	}
 	return detail, nil
 }
@@ -142,6 +199,12 @@ func (a *App) Chapters(bookID string) ([]weread.Chapter, error) {
 		defer cancel()
 		fresh, ferr := a.eink.Chapters(ctx, bookID)
 		if ferr != nil {
+			if a.webSession() {
+				if webChapters, _, werr := a.web.Catalog(ctx, bookID); werr == nil && len(webChapters) > 0 {
+					_ = a.store.ReplaceChapters(bookID, webChapters)
+					return webChapters, nil
+				}
+			}
 			return chapters, nil
 		}
 		_ = a.store.ReplaceChapters(bookID, fresh)
@@ -190,7 +253,16 @@ func (a *App) MutateShelf(req ShelfMutation) error {
 func (a *App) Notes(bookID string) ([]weread.Note, error) {
 	ctx, cancel := context.WithTimeout(a.ctxOrBackground(), 30*time.Second)
 	defer cancel()
-	return a.eink.Notes(ctx, bookID)
+	notes, err := a.eink.Notes(ctx, bookID)
+	if err == nil {
+		return notes, nil
+	}
+	if a.webSession() {
+		if webNotes, werr := a.web.Notes(ctx, bookID); werr == nil {
+			return webNotes, nil
+		}
+	}
+	return nil, err
 }
 
 // Stats returns reading statistics.

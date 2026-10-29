@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,41 +12,56 @@ import (
 	"time"
 )
 
-// stubServer mimics the observed behaviour of the live QR handshake endpoints.
+// stubServer mimics the observed behaviour of the live WeChat QR handshake.
 type stubServer struct {
 	t *testing.T
 
-	uidRequests     int
-	infoRequests    int
-	fingerprintSeen string
+	ticketRequests int
+	qrRequests     int
+	pollRequests   int
+	loginRequests  int
+	lastSeen       string
+	loginBody      map[string]any
 
-	// infoBodies is consumed in order; the last entry repeats.
-	infoBodies []string
+	// pollBodies is consumed in order; the last entry repeats.
+	pollBodies []string
+	// loginBodies is consumed in order; the last entry repeats.
+	loginBodies []string
 }
 
 func (s *stubServer) handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/r/weread-skills", func(w http.ResponseWriter, r *http.Request) {
-		if c, err := r.Cookie("wr_fp"); err == nil {
-			s.fingerprintSeen = c.Value
-		}
-		w.Header().Set("Content-Type", "text/html")
-		_, _ = w.Write([]byte("<html><body>skills</body></html>"))
-	})
-	mux.HandleFunc("/api/auth/getLoginUid", func(w http.ResponseWriter, r *http.Request) {
-		s.uidRequests++
+	mux.HandleFunc("/wxticket", func(w http.ResponseWriter, r *http.Request) {
+		s.ticketRequests++
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"uid":"uid-1"}`))
+		_, _ = w.Write([]byte(`{"signature":"sig-1","timeStamp":1793261603,"expires_in":460}`))
 	})
-	mux.HandleFunc("/api/auth/getLoginInfo", func(w http.ResponseWriter, r *http.Request) {
-		s.infoRequests++
-		idx := s.infoRequests - 1
-		if idx >= len(s.infoBodies) {
-			idx = len(s.infoBodies) - 1
-		}
-		body := s.infoBodies[idx]
+	mux.HandleFunc("/connect/sdk/qrconnect", func(w http.ResponseWriter, r *http.Request) {
+		s.qrRequests++
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(body))
+		_, _ = w.Write([]byte(`{"errcode":0,"uuid":"uuid-1","qrcode":{"qrcodebase64":"/9j/4AAQSkZJRg=="}}`))
+	})
+	mux.HandleFunc("/connect/l/qrconnect", func(w http.ResponseWriter, r *http.Request) {
+		s.pollRequests++
+		s.lastSeen = r.URL.Query().Get("last")
+		idx := s.pollRequests - 1
+		if idx >= len(s.pollBodies) {
+			idx = len(s.pollBodies) - 1
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(s.pollBodies[idx]))
+	})
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		s.loginRequests++
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		s.loginBody = body
+		idx := s.loginRequests - 1
+		if idx >= len(s.loginBodies) {
+			idx = len(s.loginBodies) - 1
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(s.loginBodies[idx]))
 	})
 	mux.HandleFunc("/api/userInfo", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"name":"测试用户","avatar":"https://img/x.png"}`))
@@ -56,9 +72,12 @@ func (s *stubServer) handler() http.Handler {
 	return mux
 }
 
-func newTestLogin(t *testing.T, bodies []string) (*Login, *stubServer) {
+func newTestLogin(t *testing.T, polls []string, logins []string) (*Login, *stubServer) {
 	t.Helper()
-	stub := &stubServer{t: t, infoBodies: bodies}
+	if len(logins) == 0 {
+		logins = []string{`{"vid":58328018,"accessToken":"tok-1","refreshToken":"rt-1"}`}
+	}
+	stub := &stubServer{t: t, pollBodies: polls, loginBodies: logins}
 	srv := httptest.NewServer(stub.handler())
 	t.Cleanup(srv.Close)
 
@@ -67,52 +86,48 @@ func newTestLogin(t *testing.T, bodies []string) (*Login, *stubServer) {
 		t.Fatalf("NewStore: %v", err)
 	}
 	ep := endpoints{
-		base:   srv.URL,
-		skills: srv.URL + "/r/weread-skills",
-		uid:    srv.URL + "/api/auth/getLoginUid",
-		info:   srv.URL + "/api/auth/getLoginInfo",
+		ticket: srv.URL + "/wxticket?nonceStr=weread",
+		qr:     srv.URL + "/connect/sdk/qrconnect",
+		poll:   srv.URL + "/connect/l/qrconnect",
+		login:  srv.URL + "/login",
 		user:   srv.URL + "/api/userInfo",
 		apiKey: srv.URL + "/api/skills/apikeyGet?only_show=1",
 	}
 	return newLogin(store, ep), stub
 }
 
-func TestStartLoginSendsFingerprintAndBuildsQRCode(t *testing.T) {
-	login, stub := newTestLogin(t, []string{`{"succeed":false,"logicCode":"LOGIN_TIMEOUT"}`})
+func TestStartBuildsWeChatQRCode(t *testing.T) {
+	login, stub := newTestLogin(t, []string{`{"wx_errcode":408}`}, nil)
 
 	code, err := login.Start(context.Background())
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if code.UID != "uid-1" {
+	if code.UID != "uuid-1" {
 		t.Errorf("uid = %q", code.UID)
 	}
-	if !strings.Contains(code.Payload, "uid-1") {
+	if !strings.Contains(code.Payload, "appid=wxab9b71ad2b90ff34") || !strings.Contains(code.Payload, "signature=sig-1") {
 		t.Errorf("payload = %q", code.Payload)
 	}
-	if !strings.HasPrefix(code.Image, "data:image/png;base64,") {
+	if !strings.HasPrefix(code.Image, "data:image/jpeg;base64,") {
 		t.Errorf("image prefix = %q", code.Image[:24])
 	}
 	if code.Expires <= time.Now().Unix() {
 		t.Errorf("expiry = %d", code.Expires)
 	}
-	if stub.fingerprintSeen == "" {
-		t.Error("the device fingerprint cookie was not sent")
-	}
-	if stub.uidRequests != 1 {
-		t.Errorf("getLoginUid called %d times, want 1", stub.uidRequests)
+	if stub.ticketRequests != 1 || stub.qrRequests != 1 {
+		t.Errorf("ticket=%d qr=%d, want 1 each", stub.ticketRequests, stub.qrRequests)
 	}
 }
 
-// LOGIN_TIMEOUT after the long poll means "not scanned yet" and must keep the
-// caller polling the same UID instead of asking for a new QR code.
-func TestPollLongPollTimeoutIsPending(t *testing.T) {
-	login, _ := newTestLogin(t, []string{`{"succeed":false,"logicCode":"LOGIN_TIMEOUT","canRetry":false}`})
+// 408 is the normal "nobody scanned yet" answer of a long poll.
+func TestPollTimeoutCodeIsPending(t *testing.T) {
+	login, _ := newTestLogin(t, []string{`{"wx_errcode":408}`}, nil)
 	if _, err := login.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 
-	res, err := login.Poll(context.Background(), "uid-1", "")
+	res, err := login.Poll(context.Background(), "uuid-1", "")
 	if err != nil {
 		t.Fatalf("Poll: %v", err)
 	}
@@ -121,77 +136,105 @@ func TestPollLongPollTimeoutIsPending(t *testing.T) {
 	}
 }
 
-func TestPollToleratesEmptyAndUnparseableBodies(t *testing.T) {
-	login, _ := newTestLogin(t, []string{"", `{"succeed":1,"webLoginVid":"vid-9","accessToken":"tok","refreshToken":"ref"}`})
+func TestPollScannedKeepsWaiting(t *testing.T) {
+	login, _ := newTestLogin(t, []string{`{"wx_errcode":404}`}, nil)
 	if _, err := login.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-
-	res, err := login.Poll(context.Background(), "uid-1", "")
+	res, err := login.Poll(context.Background(), "uuid-1", "")
 	if err != nil || !res.Pending {
-		t.Fatalf("empty body: %+v err=%v", res, err)
+		t.Fatalf("result = %+v err=%v", res, err)
+	}
+	if !strings.Contains(res.Message, "确认") {
+		t.Errorf("message = %q", res.Message)
+	}
+}
+
+func TestPollConfirmedExchangesCode(t *testing.T) {
+	login, stub := newTestLogin(t, []string{`{"wx_errcode":405,"wx_code":"wx-code-1"}`}, nil)
+	code, err := login.Start(context.Background())
+	if err != nil {
+		t.Fatalf("Start: %v", err)
 	}
 
-	// `succeed` spelled as 1 must still complete the login.
-	res, err = login.Poll(context.Background(), "uid-1", "")
+	res, err := login.Poll(context.Background(), code.UID, "")
 	if err != nil {
 		t.Fatalf("Poll: %v", err)
 	}
 	if !res.Done {
 		t.Fatalf("result = %+v", res)
 	}
-	if res.Account == nil || res.Account.VID != "vid-9" || res.Account.Name != "测试用户" {
+	if res.Account == nil || res.Account.VID != "58328018" || res.Account.Name != "测试用户" {
 		t.Fatalf("account = %+v", res.Account)
 	}
 	if !res.Account.HasKey {
 		t.Error("API key was not captured")
 	}
+	if stub.loginBody["code"] != "wx-code-1" {
+		t.Errorf("login code = %v", stub.loginBody["code"])
+	}
+	if stub.loginBody["deviceId"] != login.store.DeviceID() {
+		t.Errorf("deviceId = %v", stub.loginBody["deviceId"])
+	}
+	if _, ok := stub.loginBody["installId"]; !ok {
+		t.Error("installId missing from the login body")
+	}
+
+	creds := login.store.Get()
+	if creds == nil || creds.AccessToken != "tok-1" || creds.RefreshToken != "rt-1" {
+		t.Fatalf("stored credentials = %+v", creds)
+	}
+	if creds.Cookies["wr_skey"] != "tok-1" || creds.Cookies["wr_vid"] != "58328018" {
+		t.Errorf("cookies = %+v", creds.Cookies)
+	}
+	// The E-Ink refresh token must not be written to the browser cookie.
+	if _, ok := creds.Cookies["wr_rt"]; ok {
+		t.Errorf("wr_rt must stay empty for an E-Ink token, got %q", creds.Cookies["wr_rt"])
+	}
 }
 
-func TestPollNeedOTPAndMismatch(t *testing.T) {
-	login, _ := newTestLogin(t, []string{
-		`{"succeed":false,"logicCode":"NEED_OTP"}`,
-		`{"succeed":false,"logicCode":"OTP_NOT_MATCH"}`,
-	})
+// A rejected exchange must surface the server message instead of a bare status.
+func TestPollExchangeFailureIsReported(t *testing.T) {
+	login, _ := newTestLogin(t,
+		[]string{`{"wx_errcode":405,"wx_code":"wx-code-1"}`},
+		[]string{`{"errCode":-2013,"errMsg":"鉴权失败"}`},
+	)
 	if _, err := login.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-
-	res, err := login.Poll(context.Background(), "uid-1", "")
-	if err != nil || !res.NeedOTP {
-		t.Fatalf("first poll = %+v err=%v", res, err)
+	res, err := login.Poll(context.Background(), "uuid-1", "")
+	if err == nil {
+		t.Fatalf("expected an error, got %+v", res)
 	}
-	res, err = login.Poll(context.Background(), "uid-1", "0000")
-	if err != nil || !res.NeedOTP || res.Expired {
-		t.Fatalf("mismatch poll = %+v err=%v", res, err)
-	}
-	if !strings.Contains(res.Message, "验证码") {
-		t.Errorf("message = %q", res.Message)
+	if !strings.Contains(err.Error(), "鉴权失败") {
+		t.Errorf("error = %v", err)
 	}
 }
 
-func TestPollExpiredStopsPolling(t *testing.T) {
-	login, _ := newTestLogin(t, []string{`{"succeed":false,"logicCode":"LOGIN_CANCEL"}`})
-	if _, err := login.Start(context.Background()); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	res, err := login.Poll(context.Background(), "uid-1", "")
-	if err != nil {
-		t.Fatalf("Poll: %v", err)
-	}
-	if !res.Expired || res.Pending {
-		t.Fatalf("result = %+v", res)
+func TestPollExpiredCodesStopPolling(t *testing.T) {
+	for _, body := range []string{`{"wx_errcode":402}`, `{"wx_errcode":403}`} {
+		login, _ := newTestLogin(t, []string{body}, nil)
+		if _, err := login.Start(context.Background()); err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+		res, err := login.Poll(context.Background(), "uuid-1", "")
+		if err != nil {
+			t.Fatalf("Poll: %v", err)
+		}
+		if !res.Expired || res.Pending {
+			t.Fatalf("%s result = %+v", body, res)
+		}
 	}
 }
 
 // A non-JSON body must surface as an error so the UI backs off; it must never
 // be mistaken for a pending poll or a reason to mint a new QR code.
 func TestPollNonJSONBodyIsAnError(t *testing.T) {
-	login, _ := newTestLogin(t, []string{`<html>risk control</html>`})
+	login, _ := newTestLogin(t, []string{`<html>risk control</html>`}, nil)
 	if _, err := login.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	res, err := login.Poll(context.Background(), "uid-1", "")
+	res, err := login.Poll(context.Background(), "uuid-1", "")
 	if err == nil {
 		t.Fatalf("expected an error, got %+v", res)
 	}
@@ -201,12 +244,12 @@ func TestPollNonJSONBodyIsAnError(t *testing.T) {
 }
 
 func TestPollAfterSessionTimeoutExpires(t *testing.T) {
-	login, _ := newTestLogin(t, []string{`{"succeed":false,"logicCode":""}`})
+	login, _ := newTestLogin(t, []string{`{"wx_errcode":408}`}, nil)
 	if _, err := login.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	login.startedAt = time.Now().Add(-2 * loginTimeout)
-	res, err := login.Poll(context.Background(), "uid-1", "")
+	res, err := login.Poll(context.Background(), "uuid-1", "")
 	if err != nil {
 		t.Fatalf("Poll: %v", err)
 	}
@@ -216,7 +259,7 @@ func TestPollAfterSessionTimeoutExpires(t *testing.T) {
 }
 
 func TestPollWithEmptyUIDExpires(t *testing.T) {
-	login, _ := newTestLogin(t, []string{`{"succeed":false}`})
+	login, _ := newTestLogin(t, []string{`{"wx_errcode":408}`}, nil)
 	res, err := login.Poll(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("Poll: %v", err)
@@ -226,33 +269,21 @@ func TestPollWithEmptyUIDExpires(t *testing.T) {
 	}
 }
 
-func TestPollOmitsEmptyOTPParameter(t *testing.T) {
-	seen := make(chan string, 1)
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/auth/getLoginInfo", func(w http.ResponseWriter, r *http.Request) {
-		seen <- r.URL.RawQuery
-		_, _ = w.Write([]byte(`{"succeed":false,"logicCode":"LOGIN_TIMEOUT"}`))
-	})
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	store, err := NewStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStore: %v", err)
+// The previous status is replayed so WeChat can hold the next poll open instead
+// of answering immediately.
+func TestPollReplaysLastStatus(t *testing.T) {
+	login, stub := newTestLogin(t, []string{`{"wx_errcode":404}`, `{"wx_errcode":408}`}, nil)
+	if _, err := login.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
 	}
-	ep := endpoints{base: srv.URL, skills: srv.URL, uid: srv.URL, info: srv.URL + "/api/auth/getLoginInfo", user: srv.URL, apiKey: srv.URL}
-	login := newLogin(store, ep)
-	login.startedAt = time.Now()
-
-	if _, err := login.Poll(context.Background(), "u", ""); err != nil {
+	if _, err := login.Poll(context.Background(), "uuid-1", ""); err != nil {
 		t.Fatalf("Poll: %v", err)
 	}
-	query := <-seen
-	if strings.Contains(query, "otp") {
-		t.Fatalf("empty otp parameter must be omitted, got %q", query)
+	if _, err := login.Poll(context.Background(), "uuid-1", ""); err != nil {
+		t.Fatalf("Poll: %v", err)
 	}
-	if !strings.Contains(query, "uid=u") {
-		t.Fatalf("uid missing from %q", query)
+	if stub.lastSeen != "404" {
+		t.Errorf("last = %q, want 404", stub.lastSeen)
 	}
 }
 
@@ -295,7 +326,7 @@ func TestCredentialsPersistEncrypted(t *testing.T) {
 	}
 }
 
-func TestFingerprintShape(t *testing.T) {
+func TestFingerprintAndInstallIDShape(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
@@ -311,5 +342,12 @@ func TestFingerprintShape(t *testing.T) {
 	}
 	if !strings.HasPrefix(store.DeviceID(), "eink") {
 		t.Errorf("device id = %q", store.DeviceID())
+	}
+	installID := store.InstallID()
+	if !strings.HasPrefix(installID, "eink31") || len(installID) != len("eink31")+26 {
+		t.Errorf("install id = %q", installID)
+	}
+	if store.InstallID() != installID {
+		t.Error("install id must be stable across calls")
 	}
 }

@@ -415,6 +415,12 @@ export function ReaderView({
   if (error && !session) {
     return (
       <div className="reader">
+        <div className="reader-bar top">
+          <button className="icon-btn" onClick={() => navigate({ name: 'detail', bookId })} title="返回书籍">
+            <Icon name="left" />
+          </button>
+          <span className="chapter-title">打开章节失败</span>
+        </div>
         <div className="empty">
           <p style={{ maxWidth: 460 }}>{error}</p>
           <div className="row">

@@ -18,6 +18,7 @@ var (
 	user32   = windows.NewLazySystemDLL("user32.dll")
 	kernel32 = windows.NewLazySystemDLL("kernel32.dll")
 	gdi32    = windows.NewLazySystemDLL("gdi32.dll")
+	shcore   = windows.NewLazySystemDLL("shcore.dll")
 
 	procEnumWindows            = user32.NewProc("EnumWindows")
 	procGetWindowThreadProcess = user32.NewProc("GetWindowThreadProcessId")
@@ -37,6 +38,13 @@ var (
 	procReleaseDC              = user32.NewProc("ReleaseDC")
 	procEnumFontFamiliesEx     = gdi32.NewProc("EnumFontFamiliesExW")
 	procClientToScreen         = user32.NewProc("ClientToScreen")
+	procGetWindowRect          = user32.NewProc("GetWindowRect")
+	procGetClassName           = user32.NewProc("GetClassNameW")
+	procIsIconic               = user32.NewProc("IsIconic")
+	procEnumDisplayMonitors    = user32.NewProc("EnumDisplayMonitors")
+	procGetMonitorInfo         = user32.NewProc("GetMonitorInfoW")
+	procMonitorFromPoint       = user32.NewProc("MonitorFromPoint")
+	procGetDpiForMonitor       = shcore.NewProc("GetDpiForMonitor")
 
 	procGetCurrentProcessID = kernel32.NewProc("GetCurrentProcessId")
 )
@@ -54,10 +62,15 @@ const (
 	hwndNotTopmost = ^uintptr(1) // (HWND)-2
 	swpNoSize      = 0x0001
 	swpNoMove      = 0x0002
+	swpNoZOrder    = 0x0004
 	swpNoActivate  = 0x0010
 
 	wmHotkey = 0x0312
 	pmRemove = 0x0001
+
+	monitorDefaultToNearest = 2
+	monitorInfoPrimary      = 0x00000001
+	mdtEffectiveDPI         = 0
 )
 
 // Manager owns the native window handle and any registered hotkeys.
@@ -96,7 +109,7 @@ func (m *Manager) HWND() (windows.HWND, error) {
 func findMainWindow() (windows.HWND, error) {
 	pid := uint32(windows.GetCurrentProcessId())
 	var best windows.HWND
-	var bestArea int64
+	var bestScore int64
 
 	cb := windows.NewCallback(func(hwnd uintptr, _ uintptr) uintptr {
 		var procID uint32
@@ -104,15 +117,24 @@ func findMainWindow() (windows.HWND, error) {
 		if procID != pid {
 			return 1
 		}
-		visible, _, _ := procIsWindowVisible.Call(hwnd)
-		if visible == 0 {
+		var rect winRect
+		procGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&rect)))
+		area := int64(rect.Right-rect.Left) * int64(rect.Bottom-rect.Top)
+		if area <= 0 {
 			return 1
 		}
-		var rect struct{ Left, Top, Right, Bottom int32 }
-		user32.NewProc("GetWindowRect").Call(hwnd, uintptr(unsafe.Pointer(&rect)))
-		area := int64(rect.Right-rect.Left) * int64(rect.Bottom-rect.Top)
-		if area > bestArea {
-			bestArea = area
+		// The Wails window class is unique to the main window, so it wins even
+		// while the window is still hidden. Visibility and size only break ties
+		// between helper windows of the same process.
+		score := area
+		if windowClassName(hwnd) == "wailsWindow" {
+			score += 1 << 40
+		}
+		if visible, _, _ := procIsWindowVisible.Call(hwnd); visible != 0 {
+			score += 1 << 30
+		}
+		if score > bestScore {
+			bestScore = score
 			best = windows.HWND(hwnd)
 		}
 		return 1
@@ -122,6 +144,130 @@ func findMainWindow() (windows.HWND, error) {
 		return 0, errors.New("platform: 未找到窗口句柄")
 	}
 	return best, nil
+}
+
+func windowClassName(hwnd uintptr) string {
+	buf := make([]uint16, 64)
+	n, _, _ := procGetClassName.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	if n == 0 {
+		return ""
+	}
+	return windows.UTF16ToString(buf[:n])
+}
+
+// ---------------------------------------------------------------- geometry
+
+type winRect struct {
+	Left, Top, Right, Bottom int32
+}
+
+func (r winRect) rect() Rect {
+	return Rect{X: int(r.Left), Y: int(r.Top), W: int(r.Right - r.Left), H: int(r.Bottom - r.Top)}
+}
+
+type winPoint struct {
+	X, Y int32
+}
+
+type winMonitorInfo struct {
+	CbSize    uint32
+	RcMonitor winRect
+	RcWork    winRect
+	DwFlags   uint32
+}
+
+// AbsolutePlacement reports that RestoreBounds uses absolute virtual-desktop
+// coordinates, unlike the Wails position API.
+func (m *Manager) AbsolutePlacement() bool { return true }
+
+// WorkAreas lists every monitor's usable area in virtual-desktop pixels.
+func (m *Manager) WorkAreas() []WorkArea {
+	var areas []WorkArea
+	cb := windows.NewCallback(func(hmon uintptr, _ uintptr, _ uintptr, _ uintptr) uintptr {
+		info := winMonitorInfo{CbSize: uint32(unsafe.Sizeof(winMonitorInfo{}))}
+		ok, _, _ := procGetMonitorInfo.Call(hmon, uintptr(unsafe.Pointer(&info)))
+		if ok == 0 {
+			return 1
+		}
+		areas = append(areas, WorkArea{
+			Rect:    info.RcWork.rect(),
+			Primary: info.DwFlags&monitorInfoPrimary != 0,
+		})
+		return 1
+	})
+	procEnumDisplayMonitors.Call(0, 0, cb, 0)
+	return areas
+}
+
+// WindowRect returns the main window's absolute rectangle in physical pixels.
+// A minimised window reports a bogus (-32000) position, so that state is
+// rejected instead of being persisted as the next launch position.
+func (m *Manager) WindowRect() (Rect, error) {
+	hwnd, err := m.HWND()
+	if err != nil {
+		return Rect{}, err
+	}
+	if iconic, _, _ := procIsIconic.Call(uintptr(hwnd)); iconic != 0 {
+		return Rect{}, errors.New("platform: 窗口已最小化")
+	}
+	var r winRect
+	if ok, _, callErr := procGetWindowRect.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&r))); ok == 0 {
+		return Rect{}, callErr
+	}
+	return r.rect(), nil
+}
+
+// RestoreBounds places the window at an absolute position. x/y are physical
+// virtual-desktop pixels (what WindowGetPosition reports), while w/h are DIPs
+// (what WindowGetSize reports); the size is converted with the DPI of the
+// monitor the window is about to land on.
+//
+// Wails' own WindowSetPosition cannot be used here: its Win32 backend treats
+// the arguments as offsets from the current monitor's work-area origin while
+// WindowGetPosition returns absolute coordinates. On a secondary monitor that
+// shifts the window by the monitor origin, often far off-screen.
+func (m *Manager) RestoreBounds(x, y, w, h int) (Rect, error) {
+	hwnd, err := m.HWND()
+	if err != nil {
+		return Rect{}, err
+	}
+	if w <= 0 || h <= 0 {
+		return Rect{}, errors.New("platform: 无效的窗口尺寸")
+	}
+
+	dpi := dpiAtPoint(x, y)
+	target := Rect{
+		X: x,
+		Y: y,
+		W: w * dpi / 96,
+		H: h * dpi / 96,
+	}
+	final := fitToWorkAreas(target, m.WorkAreas())
+
+	ok, _, callErr := procSetWindowPos.Call(uintptr(hwnd), 0, uintptr(final.X), uintptr(final.Y),
+		uintptr(final.W), uintptr(final.H), swpNoZOrder|swpNoActivate)
+	if ok == 0 {
+		return Rect{}, callErr
+	}
+	return final, nil
+}
+
+// dpiAtPoint returns the effective DPI of the monitor nearest to a point.
+func dpiAtPoint(x, y int) int {
+	if err := procGetDpiForMonitor.Find(); err != nil {
+		return 96
+	}
+	pt := winPoint{X: int32(x), Y: int32(y)}
+	hmon, _, _ := procMonitorFromPoint.Call(uintptr(unsafe.Pointer(&pt)), monitorDefaultToNearest)
+	if hmon == 0 {
+		return 96
+	}
+	var dpiX, dpiY uint32
+	hr, _, _ := procGetDpiForMonitor.Call(hmon, mdtEffectiveDPI, uintptr(unsafe.Pointer(&dpiX)), uintptr(unsafe.Pointer(&dpiY)))
+	if int32(hr) != 0 || dpiX == 0 {
+		return 96
+	}
+	return int(dpiX)
 }
 
 // SetOpacity applies whole-window alpha (0.2 – 1.0).
