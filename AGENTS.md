@@ -5,7 +5,7 @@
 
 ## 项目概览
 
-微信读书桌面客户端（Wails v2 + Go 1.26 + React 19 / Vite 7 / TypeScript）。
+微信读书桌面客户端（Wails v2.7.1 + Go 1.20 + React 19 / Vite 7 / TypeScript）。
 
 - 后端：`internal/`，Wails 绑定层在 `internal/app`，协议实现分 `eink` / `web` 两条通道。
 - 前端：`frontend/src`，视图在 `views/`，分页引擎在 `reader/`，伪装皮肤在 `skins/`。
@@ -23,17 +23,22 @@ make lint       # gofmt + go vet + tsc --noEmit
 
 ### Go 工具链注意
 
-`go.mod` 要求 **go 1.26.0**。本机 PATH 里的 `go` 可能是旧版本（如 1.20 / 1.25），此时：
+`go.mod` 要求 **go 1.20**。Wails 固定在 **v2.7.1**（v2.9+ 要求 Go 1.21，v2.14 要求 1.25），
+SQLite 驱动为 v1.30.1，x/net 与 x/sys 也锁定在同期版本。升级其中任何一个都要同步提高
+`go` 指令，否则 Go 1.20 无法构建。
 
-- 普通构建：`GOTOOLCHAIN=auto go build ./...`（让 Go 自动下载对应工具链）；
-- `wails build`：它直接调用 PATH 中的 `go`，需要把 1.26 的 `GOROOT` 与 `bin` 放到 PATH 前面，例如：
+本机 PATH 中的 `go` 为 1.20 时可以直接构建：
+
+```bash
+go build ./...
+go test ./internal/...
+```
+
+`wails build` 会调用 PATH 里的 `go`。实测 CLI v2.14 仍能构建 v2.7.1 模块，但会打印版本不一致警告；
+要消除警告并保证绑定模板一致，可安装匹配的 CLI：
 
 ```powershell
-$tc = 'C:\Users\jhq\.g\versions\1.26.5'
-$env:GOROOT = $tc
-$env:PATH = "$tc\bin;$env:PATH"
-$env:GOTOOLCHAIN = 'local'
-wails build
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.7.1
 ```
 
 `go vet` 在 `internal/platform/fonts_windows.go` 有一条既有的 `unsafe.Pointer` 警告，属于已知问题，不要顺手改掉。
@@ -83,16 +88,22 @@ Wails v2 的 `WindowSetPosition(x, y)` 在 Windows 上是**相对当前显示器
 | 详情 | `web.BookInfo` |
 | 目录 | `web.Catalog` |
 | 进度 | `web.Progress` |
+| 统计 | `web.Stats` |
 | 划线 | `web.Notes` |
 
 兜底放在 `internal/app` 层（先 E-Ink，失败再 Web），不要在 `web` 包里反向调用 E-Ink。
-已知仍只走 E-Ink、需要重新扫码的能力：书架写操作、统计、公众号列表、全书下载的目录引导。
+已知仍只走 E-Ink、需要重新扫码的能力：书架写操作、公众号列表、全书下载的目录引导。
+统计已通过 `web.Stats` 调用 `/readdata/detail` 走网页通道；若网页接口也拒绝，再引导重新扫码。
+章节图片优先取 `tar`；资源包缺失/失败时通过 `/media-proxy` 按原图地址走同一 Cookie 会话回源，只允许 `*.weread.qq.com` 与 `mmbiz.qpic.cn`，并缓存到 `media`。
 
 ### 6. 图标与品牌资源
 
 - 界面功能图标禁止 emoji，使用线性 SVG（`stroke="currentColor"`，24×24，`stroke-width=2`）或 iconfont / iconpark。
 - 应用图标：`build/appicon.png`（1024×1024）、`build/windows/icon.ico`（16–256 多尺寸）、
   `frontend/public/favicon.png`、`frontend/public/weread-icon.png`。
+- 应用图标必须带圆角：圆角半径约为边长的 22.37%，四角在图标外缘处为完全透明（alpha=0，
+  由 4× 超采样遮罩做抗锯齿），不要用四角不透明的整块方形图。
+  四个位置需保持同一套圆角遮罩：`appicon.png` 1024 基准，其余尺寸由它等比缩放并单独重新套遮罩。
 - 更换图标后需要重新 `wails build` 才会嵌入 exe。
 
 ### 7. 命名与注释
@@ -114,6 +125,37 @@ Wails v2 的 `WindowSetPosition(x, y)` 在 Windows 上是**相对当前显示器
 - `user.email = hanq@live.cn`
 
 仓库级配置：`git config --local user.name hanq && git config --local user.email hanq@live.cn`。
+
+### 10. 伪装皮肤与任务栏图标
+
+前端皮肤统一由 `frontend/src/skins/registry.ts` 的 `SKIN_OPTIONS` 注册
+（`none` / `word` / `vscode` / `wechat` / `dingtalk` / `feishu` / `wecom`）。新增皮肤必须同时：
+
+1. 在 `registry.ts` 增加条目；
+2. 在 `internal/app/api.go` 的 `SetSkin` 白名单、`internal/app/disguise.go` 的
+   `skinTitles` / `skinIcons` 中登记；
+3. 提供 `internal/app/icons/<skin>.ico`。启动与切换皮肤时 `applyDisguise` 会把图标
+   写入数据目录，并通过 `platform.SetWindowIcon` 更新任务栏与 Alt+Tab 图标。
+
+IM 皮肤复用 `ReaderView` 的 `reveal` 与 `BlockView`，由 `ChatTranscript` 把段落渲染成
+消息；不要在皮肤内另建文本渲染管线，否则打字模式、进度上报和锚点恢复都会失效。
+
+窗口标题由 `resolveWindowTitle` 按皮肤归一化：内置标题随皮肤切换，用户自定义标题保留；
+启动、切换皮肤和保存设置时都会同步到原生窗口。
+
+### 11. 老板键、任务栏与悬停区域
+
+- 老板键 `panic`（默认 `Ctrl+Alt+H`）由 Go 侧直接处理为“显示 / 隐藏切换”，不经过前端；窗口隐藏时仍然有效。
+- `Disguise.HideTaskbar` 通过 `platform.SetTaskbarHidden` 设置 `WS_EX_TOOLWINDOW`，把窗口从任务栏与 Alt+Tab 移除；隐藏后仍可用老板键或悬停显示区恢复。
+- `Disguise.HoverReveal` 由 `internal/app/hover.go` 每 120ms 轮询 `CursorPosition`，进入 `ShowZone` 显示、进入 `HideZone` 隐藏；坐标是物理屏幕像素，用“取光标”按钮拾取。
+- `Disguise.Floating` 让阅读器使用透明、零边距布局（`useGeometry` 的 floating 分支 + `.reader.floating`），窗口背景同步为透明；只对“纯净”皮肤生效。
+- `Window.Radius` 只作为 CSS 圆角半径（`--window-radius`）使用，由 `.app-root` / `.window-frame` 的 `border-radius` + `overflow: hidden` 绘制；不要再用 `CreateRoundRectRgn` / `SetWindowRgn` 裁剪原生窗口，二进制区域无法抗锯齿，在高 DPI 下会出现颗粒状锯齿。`platform.SetWindowRadius` 仅负责清除旧版本残留的 native region；圆角大于 0 时窗口背景强制透明，避免四角露出底色。
+
+### 12. 响应式布局
+
+`frontend/src/styles/responsive.css` 定义壳层断点：>1080 完整侧栏；761–1080 为 64px 图标栏；≤760 改为标题栏菜单抽屉（`.shell.nav-open` + `.nav-backdrop`）。≤900 书架工具栏换行；≤680/560 收紧间距与书封最小宽度；书封列宽用 `clamp()` 随窗口缩放。
+
+新增页面必须保证在 560×380 下可操作：工具栏里的分段控件用 `.seg`（`flex: none` + 按钮 `white-space: nowrap`），不要给它们设置可收缩宽度；抽屉导航在路由切换或点击背景时关闭。
 
 ## 验证清单
 
