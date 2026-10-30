@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 // Store wraps the SQLite cache. It intentionally uses a single connection:
 // the app is a single user desktop client and serialising writes removes every
@@ -165,6 +165,52 @@ func (s *Store) migrate() error {
 			PRIMARY KEY (book_id, seq)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_rag_chunk_book ON rag_chunk(book_id, seq)`,
+		// Story graph. For the first iteration one chapter is one scene: it costs
+		// no extra model calls and still gives the timeline a real anchor per
+		// chapter. Finer segmentation can be layered on later without a schema
+		// change, because block_start/block_end already describe the span.
+		`CREATE TABLE IF NOT EXISTS story_scene (
+			book_id TEXT NOT NULL,
+			seq INTEGER NOT NULL,
+			chapter_uid INTEGER NOT NULL,
+			chapter_idx INTEGER NOT NULL,
+			chapter_title TEXT NOT NULL DEFAULT '',
+			block_start INTEGER NOT NULL DEFAULT 0,
+			block_end INTEGER NOT NULL DEFAULT 0,
+			location TEXT NOT NULL DEFAULT '',
+			time_hint TEXT NOT NULL DEFAULT '',
+			pov TEXT NOT NULL DEFAULT '',
+			mood TEXT NOT NULL DEFAULT '',
+			summary TEXT NOT NULL DEFAULT '',
+			participants_json TEXT NOT NULL DEFAULT '[]',
+			source TEXT NOT NULL DEFAULT 'chapter',
+			updated_at INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (book_id, seq)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_story_scene_book ON story_scene(book_id, seq)`,
+		// Job state lives in the database, not in memory: extracting a whole book
+		// is expensive enough that a crash must resume instead of restarting.
+		`CREATE TABLE IF NOT EXISTS story_job (
+			book_id TEXT NOT NULL,
+			job TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			total INTEGER NOT NULL DEFAULT 0,
+			done INTEGER NOT NULL DEFAULT 0,
+			failed INTEGER NOT NULL DEFAULT 0,
+			error TEXT NOT NULL DEFAULT '',
+			updated_at INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (book_id, job)
+		)`,
+		`CREATE TABLE IF NOT EXISTS story_job_item (
+			book_id TEXT NOT NULL,
+			job TEXT NOT NULL,
+			item_key TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			error TEXT NOT NULL DEFAULT '',
+			updated_at INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (book_id, job, item_key)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_story_job_item ON story_job_item(book_id, job, status)`,
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
