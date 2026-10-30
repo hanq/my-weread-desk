@@ -5,7 +5,7 @@
 import type {
   AuthState, Book, BookDetail, Chapter, CursorInfo, DeviceReadStats, DownloadState, LoginPoll, MPArticle,
   AISource, Note, Position, Progress, QRCode, RAGStatus, ReadStats, ReaderSession,
-  SearchResult, Settings, ShelfGroup, Theme, WindowState,
+  SearchResult, Settings, ShelfGroup, StoryGraphStatus, StoryScene, Theme, WindowState,
 } from './types';
 
 type AnyFn = (...args: unknown[]) => Promise<unknown>;
@@ -82,6 +82,13 @@ export const api = {
   dropRagIndex: (bookId: string) => call<void>('DropRAGIndex', bookId),
   askBook: (bookId: string, question: string) => call<string>('AskBook', bookId, question),
   cancelAsk: (requestId: string) => call<void>('CancelAsk', requestId),
+
+  // story graph
+  buildStoryGraph: (bookId: string) => call<StoryGraphStatus>('BuildStoryGraph', bookId),
+  storyGraphStatus: (bookId: string) => call<StoryGraphStatus>('StoryGraphStatus', bookId),
+  cancelStoryGraph: (bookId: string) => call<void>('CancelStoryGraph', bookId),
+  storyTimeline: (bookId: string) => call<StoryScene[]>('StoryTimeline', bookId),
+  dropStoryGraph: (bookId: string) => call<void>('DropStoryGraph', bookId),
   search: (keyword: string, scope: string, page: number) =>
     call<SearchResult>('Search', keyword, scope, page),
   bookDetail: (bookId: string) => call<BookDetail>('BookDetail', bookId),

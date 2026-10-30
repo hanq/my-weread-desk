@@ -10,6 +10,7 @@ export type Route =
   | { name: 'search' }
   | { name: 'stats' }
   | { name: 'assistant' }
+  | { name: 'traversal' }
   | { name: 'settings' }
   | { name: 'mp' }
   | { name: 'detail'; bookId: string }

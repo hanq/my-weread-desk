@@ -222,6 +222,34 @@ export interface ReaderSettings {
   prefetchNext: boolean;
 }
 
+export interface StoryScene {
+  bookId: string;
+  seq: number;
+  chapterUid: number;
+  chapterIdx: number;
+  chapterTitle: string;
+  blockStart: number;
+  blockEnd: number;
+  location: string;
+  timeHint: string;
+  pov: string;
+  mood: string;
+  summary: string;
+  participants: string[];
+  source: string;
+}
+
+export interface StoryGraphStatus {
+  bookId: string;
+  status: string;
+  total: number;
+  done: number;
+  failed: number;
+  error: string;
+  sceneCount: number;
+  updatedAt: number;
+}
+
 export interface AISettings {
   enabled: boolean;
   baseUrl: string;

@@ -487,6 +487,125 @@
   }
 }
 
+/* ---------------------------------------------------------------- traversal */
+
+.traversal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.traversal-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+.traversal-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.traversal-progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+.timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 22px;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: var(--chrome-line-strong);
+}
+.timeline-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.timeline-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--chrome-line);
+}
+.timeline-seq {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-left: -33px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 10.5px;
+  color: var(--ink-dim);
+  background: var(--chrome-3);
+  border: 1px solid var(--chrome-line-strong);
+  font-variant-numeric: tabular-nums;
+}
+.timeline-item:hover .timeline-seq {
+  color: #cfe0ff;
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.timeline-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.timeline-title {
+  font-size: 13px;
+  color: var(--ink);
+}
+.timeline-summary {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.timeline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+.timeline-badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  background: rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+}
+.timeline-badge.accent {
+  color: #cfe0ff;
+  background: var(--accent-soft);
+}
+.timeline-badge.faint {
+  opacity: 0.6;
+}
+
+
 
 .shelf-grid {
   display: grid;
