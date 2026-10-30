@@ -26,6 +26,7 @@ type reporter struct {
 	stateAt        map[string]*weread.ReaderState
 	lastReport     map[string]time.Time
 	lastActivity   time.Time
+	lastLocalTick  time.Time
 	lastActiveBook string
 
 	stopCh chan struct{}
@@ -38,7 +39,7 @@ func newReporter(a *App) *reporter {
 		pending:      map[string]Position{},
 		stateAt:      map[string]*weread.ReaderState{},
 		lastReport:   map[string]time.Time{},
-		lastActivity: time.Now(),
+		lastActivity: time.Time{},
 		stopCh:       make(chan struct{}),
 	}
 }
@@ -68,12 +69,21 @@ func (r *reporter) stop() {
 func (r *reporter) touch(p Position) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// Seed the report clock on the first position update. Without this the
+	// first report would see a zero time and claim the full 180s cap.
+	if _, ok := r.pending[p.BookID]; !ok {
+		if _, reported := r.lastReport[p.BookID]; !reported {
+			r.lastReport[p.BookID] = time.Now()
+		}
+	}
 	r.pending[p.BookID] = p
 	r.lastActivity = time.Now()
 	r.lastActiveBook = p.BookID
 }
 
 func (r *reporter) tick() {
+	now := time.Now()
+	r.tickLocal(now)
 	settings := r.app.settings.Get()
 	if !settings.Reader.ReportProgress && !settings.Reader.ReportReadTime {
 		return
@@ -105,6 +115,35 @@ func (r *reporter) tick() {
 	}
 }
 
+// tickLocal accumulates the foreground reading clock into the local per-device
+// table independently of whether the cloud report succeeds or is enabled.
+// WeRead's stats API is account-wide, so this is the only source for
+// "this device" time. The local counter is not an upload, so it must keep
+// working even when the user turns off read-time reporting.
+func (r *reporter) tickLocal(now time.Time) {
+	r.mu.Lock()
+	last := r.lastLocalTick
+	r.lastLocalTick = now
+	active := !r.lastActivity.IsZero() && now.Sub(r.lastActivity) <= 3*time.Minute
+	r.mu.Unlock()
+
+	if last.IsZero() || !active {
+		return
+	}
+	delta := now.Sub(last)
+	// A suspend/resume can produce a huge gap; cap it so the counter never
+	// jumps by hours after the laptop wakes up.
+	if delta > 10*time.Second {
+		delta = 10 * time.Second
+	}
+	if delta < time.Second {
+		return
+	}
+	if err := r.app.store.AddDeviceReadTime(now.Format("2006-01-02"), int64(delta/time.Second)); err != nil {
+		r.app.logf("保存本设备阅读时长失败：%v", err)
+	}
+}
+
 // reportNow forces an immediate report for a book.
 func (r *reporter) reportNow(bookID string) error {
 	r.mu.Lock()
@@ -132,8 +171,15 @@ func (r *reporter) report(p Position) error {
 	}
 
 	r.mu.Lock()
-	elapsed := int(time.Since(r.lastReport[p.BookID]).Seconds())
+	last := r.lastReport[p.BookID]
+	if last.IsZero() {
+		last = r.lastActivity
+	}
 	r.mu.Unlock()
+	elapsed := 30
+	if !last.IsZero() {
+		elapsed = int(time.Since(last).Seconds())
+	}
 	if elapsed <= 0 {
 		elapsed = 30
 	}

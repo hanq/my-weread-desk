@@ -33,7 +33,7 @@ func (a *App) SyncShelf() ([]weread.Book, error) {
 }
 
 func (a *App) syncShelf(ctx context.Context) ([]weread.Book, error) {
-	books, err := a.eink.Shelf(ctx)
+	books, groups, err := a.eink.ShelfSnapshot(ctx)
 	if err != nil {
 		// Credentials minted by the browser login carry a cookie session but no
 		// API token, so the E-Ink shelf answers -2012. The browser shelf serves
@@ -41,8 +41,7 @@ func (a *App) syncShelf(ctx context.Context) ([]weread.Book, error) {
 		if a.session.Credentials().HasWebSession() {
 			if webBooks, werr := a.web.Shelf(ctx); werr == nil {
 				a.logf("E-Ink 书架不可用，已改用网页会话：%v", err)
-				books = webBooks
-				err = nil
+				books, groups, err = webBooks, nil, nil
 			} else {
 				a.logf("网页书架同步失败：%v", werr)
 			}
@@ -60,8 +59,85 @@ func (a *App) syncShelf(ctx context.Context) ([]weread.Book, error) {
 	if err := a.store.ReplaceShelf(books); err != nil {
 		return nil, err
 	}
+	// Folder membership is optional: a missing archive list must not discard
+	// the books that were just synced, so the error is logged and ignored.
+	if err := a.store.ReplaceGroups(groups); err != nil {
+		a.logf("同步书架分组失败：%v", err)
+	}
 	_ = a.store.SetMeta("shelfSyncedAt", fmt.Sprint(time.Now().Unix()))
 	return books, nil
+}
+
+// Groups returns the cached shelf folders immediately (never blocks on the
+// network).
+func (a *App) Groups() []weread.ShelfGroup {
+	groups, err := a.store.Groups()
+	if err != nil {
+		a.logf("读取分组失败：%v", err)
+		return []weread.ShelfGroup{}
+	}
+	if groups == nil {
+		return []weread.ShelfGroup{}
+	}
+	return groups
+}
+
+// CreateGroup creates a folder that lives only in this app. Writing folders
+// back to the account is intentionally not offered: /shelf/archive is a write
+// endpoint and repeated calls from a desktop client look like automation.
+func (a *App) CreateGroup(name string) (*weread.ShelfGroup, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, errors.New("分组名称不能为空")
+	}
+	if len([]rune(name)) > 24 {
+		return nil, errors.New("分组名称不能超过 24 个字")
+	}
+	g := weread.ShelfGroup{
+		ID:     fmt.Sprintf("local-%d", time.Now().UnixNano()),
+		Name:   name,
+		Source: "local",
+		Sort:   1000, // local folders sort after the account's own folders
+	}
+	if err := a.store.UpsertGroup(g); err != nil {
+		return nil, err
+	}
+	return &g, nil
+}
+
+// RenameGroup renames a folder. A folder mirrored from the account is renamed
+// only locally; the account keeps its original name.
+func (a *App) RenameGroup(groupID, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("分组名称不能为空")
+	}
+	if len([]rune(name)) > 24 {
+		return errors.New("分组名称不能超过 24 个字")
+	}
+	return a.store.RenameGroup(groupID, name)
+}
+
+// DeleteGroup removes a folder and clears its membership. A folder mirrored
+// from the account reappears on the next shelf sync.
+func (a *App) DeleteGroup(groupID string) error {
+	return a.store.DeleteGroup(groupID)
+}
+
+// SetBookGroup moves books into a folder, or out of one when groupID is empty.
+func (a *App) SetBookGroup(bookIDs []string, groupID string) error {
+	if len(bookIDs) == 0 {
+		return errors.New("没有选择书籍")
+	}
+	name := ""
+	if groupID != "" {
+		g, err := a.store.Group(groupID)
+		if err != nil {
+			return err
+		}
+		name = g.Name
+	}
+	return a.store.SetBookGroup(bookIDs, groupID, name)
 }
 
 // Search queries the bookstore.
@@ -270,11 +346,22 @@ func (a *App) Stats(mode string, baseTime int64) (*weread.ReadStats, error) {
 	ctx, cancel := context.WithTimeout(a.ctxOrBackground(), 30*time.Second)
 	defer cancel()
 	stats, err := a.eink.Stats(ctx, mode, baseTime)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		_ = a.store.SaveReadStats(mode, baseTime, stats)
+		return stats, nil
 	}
-	_ = a.store.SaveReadStats(mode, baseTime, stats)
-	return stats, nil
+	// Credentials from the old browser login have no E-Ink token. /readdata/detail
+	// is also served by the Web/Mobile channel, so try the cookie session before
+	// surfacing the "re-scan" error.
+	if a.webSession() {
+		if webStats, werr := a.web.Stats(ctx, mode, baseTime); werr == nil {
+			_ = a.store.SaveReadStats(mode, baseTime, webStats)
+			return webStats, nil
+		} else {
+			a.logf("网页统计失败：%v", werr)
+		}
+	}
+	return nil, err
 }
 
 // MPArticles lists an official account's articles.

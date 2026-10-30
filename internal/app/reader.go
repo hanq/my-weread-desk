@@ -10,6 +10,7 @@ import (
 	"my-weread-desk/internal/content"
 	"my-weread-desk/internal/library"
 	"my-weread-desk/internal/weread"
+	"my-weread-desk/internal/weread/protocol"
 	"my-weread-desk/internal/weread/web"
 )
 
@@ -55,8 +56,9 @@ func (a *App) OpenChapter(bookID string, chapterUID int64) (*ReaderSession, erro
 		book = &weread.Book{ID: bookID, Title: chapter.Title}
 	}
 	sess := &ReaderSession{Book: *book, Chapter: chapter, Chapters: chapters}
-
-	if cached, err := a.store.ChapterContent(bookID, chapter.UID); err == nil {
+	cached, cacheErr := a.store.ChapterContent(bookID, chapter.UID)
+	needsImages := cacheErr == nil && hasMissingImage(cached.Blocks)
+	if cacheErr == nil && (!needsImages || !a.shouldRetryImages(bookID, chapter.UID)) {
 		sess.Content = *cached
 		sess.FromCache = true
 		if p, perr := a.store.Progress(bookID); perr == nil {
@@ -67,9 +69,22 @@ func (a *App) OpenChapter(bookID string, chapterUID int64) (*ReaderSession, erro
 		go a.ensureReaderState(bookID, chapter.UID)
 		return sess, nil
 	}
+	if needsImages {
+		a.logf("章节缓存缺少图片，重新解析：book=%s uid=%d", bookID, chapter.UID)
+	}
 
 	ch, err := a.fetchChapter(ctx, bookID, chapter, chapters)
 	if err != nil {
+		if cacheErr == nil {
+			// A repair fetch must not make previously readable text disappear.
+			a.logf("重新解析章节失败，继续使用缓存：%v", err)
+			sess.Content = *cached
+			sess.FromCache = true
+			if p, perr := a.store.Progress(bookID); perr == nil {
+				sess.Progress = p
+			}
+			return sess, nil
+		}
 		return nil, err
 	}
 	sess.Content = *ch
@@ -103,7 +118,10 @@ func (a *App) fetchChapter(ctx context.Context, bookID string, chapter weread.Ch
 	// The E-Ink catalogue carries no resource package URL, so a web catalogue
 	// pass is needed once per book to get chapter tar archives and the format.
 	if chapter.Tar == "" || chapter.Format == "" {
-		if webChapters, format, werr := a.web.Catalog(ctx, bookID); werr == nil && len(webChapters) > 0 {
+		webChapters, format, werr := a.web.Catalog(ctx, bookID)
+		if werr != nil {
+			a.logf("网页目录补全失败：book=%s uid=%d err=%v", bookID, chapter.UID, werr)
+		} else if len(webChapters) > 0 {
 			for i := range webChapters {
 				if webChapters[i].Format == "" {
 					webChapters[i].Format = format
@@ -117,27 +135,55 @@ func (a *App) fetchChapter(ctx context.Context, bookID string, chapter weread.Ch
 			_ = a.store.SetBookFormat(bookID, format)
 		}
 	}
+	a.logf("章节目录：book=%s uid=%d tar=%q format=%q", bookID, chapter.UID, chapter.Tar, chapter.Format)
 
 	result, err := a.web.Chapter(ctx, bookID, chapter, state)
 	if err != nil {
 		return nil, err
 	}
 
+	referer := protocol.ReaderURL(bookID, chapter.UID)
 	media := map[string]string{}
 	if result.Tar != "" {
-		media = a.cacheChapterImages(ctx, bookID, result.Tar)
+		a.logf("章节资源包：book=%s uid=%d url=%s", bookID, chapter.UID, result.Tar)
+		media = a.cacheChapterImages(ctx, bookID, result.Tar, referer)
+	} else {
+		a.logf("章节《%s》没有图片资源包，改为按需回源", chapter.Title)
 	}
 
+	misses := 0
 	resolve := func(src string) (string, bool) {
 		name := webMediaName(src)
 		if name == "" {
 			return "", false
 		}
-		if _, ok := media[name]; ok {
-			return "/media/" + bookID + "/" + name, true
+		// Image references may carry no extension, differ in case, or be
+		// URL-escaped; try every normalised key before falling back to the
+		// placeholder.
+		keys := imageLookupKeys(name)
+		for _, key := range keys {
+			if stored, ok := media[key]; ok {
+				return "/media/" + bookID + "/" + stored, true
+			}
 		}
-		if a.store.HasMedia(bookID, name) {
-			return "/media/" + bookID + "/" + name, true
+		for _, key := range keys {
+			if a.store.HasMedia(bookID, key) {
+				return "/media/" + bookID + "/" + key, true
+			}
+		}
+		// The tar archive is the primary source, but it may be absent or fail
+		// to download. Fetch the original CDN image through the same cookie
+		// session instead of leaving the reader with a placeholder.
+		if remote, ok := remoteImageSrc(src); ok {
+			if misses < 3 {
+				a.logf("章节图片改用代理：book=%s uid=%d src=%s", bookID, chapter.UID, src)
+				misses++
+			}
+			return imageProxyURL(bookID, chapter.UID, remote), true
+		}
+		if misses < 3 {
+			a.logf("章节图片未命中：book=%s uid=%d src=%s media=%d", bookID, chapter.UID, src, len(media))
+			misses++
 		}
 		return "", false
 	}
@@ -146,6 +192,16 @@ func (a *App) fetchChapter(ctx context.Context, bookID string, chapter weread.Ch
 	if len(blocks) == 0 {
 		return nil, fmt.Errorf("%w: 章节正文为空", weread.ErrProtocolChanged)
 	}
+	images, missing := 0, 0
+	for _, b := range blocks {
+		if b.Kind == "image" {
+			images++
+			if b.Src == "" {
+				missing++
+			}
+		}
+	}
+	a.logf("章节图片统计：book=%s uid=%d images=%d missing=%d media=%d", bookID, chapter.UID, images, missing, len(media))
 
 	out := &weread.ChapterContent{
 		BookID:     bookID,
@@ -164,19 +220,29 @@ func (a *App) fetchChapter(ctx context.Context, bookID string, chapter weread.Ch
 	return out, nil
 }
 
-func (a *App) cacheChapterImages(ctx context.Context, bookID, tarURL string) map[string]string {
+func (a *App) cacheChapterImages(ctx context.Context, bookID, tarURL, referer string) map[string]string {
 	out := map[string]string{}
-	data, err := a.downloadTar(ctx, tarURL)
+	data, err := a.downloadTar(ctx, tarURL, referer)
 	if err != nil {
-		a.logf("下载章节图片失败：%v", err)
+		a.logf("下载章节图片失败：book=%s url=%s err=%v", bookID, tarURL, err)
 		return out
 	}
 	files, err := parseTar(data)
 	if err != nil {
+		a.logf("解析章节图片包失败：book=%s err=%v", bookID, err)
 		return out
 	}
+	count, nonImage := 0, 0
+	sample := make([]string, 0, 3)
 	for name, bytes := range files {
 		ext := imageExt(bytes)
+		if ext == ".bin" {
+			nonImage++
+			if len(sample) < 3 {
+				sample = append(sample, name)
+			}
+			continue
+		}
 		stored := name
 		if !strings.HasSuffix(strings.ToLower(stored), ext) {
 			stored += ext
@@ -184,9 +250,25 @@ func (a *App) cacheChapterImages(ctx context.Context, bookID, tarURL string) map
 		if err := a.store.SaveMedia(bookID, stored, imageMime(ext), bytes); err != nil {
 			continue
 		}
+		count++
 		out[name] = stored
 		out[stored] = stored
+		if lower := strings.ToLower(name); lower != name {
+			out[lower] = stored
+		}
+		lower := strings.ToLower(name)
+		for _, known := range knownImageExts {
+			if strings.HasSuffix(lower, known) {
+				stem := name[:len(name)-len(known)]
+				if stem != "" && stem != name {
+					out[stem] = stored
+					out[strings.ToLower(stem)] = stored
+				}
+				break
+			}
+		}
 	}
+	a.logf("章节图片包解析：book=%s bytes=%d files=%d images=%d nonimage=%d sample=%v", bookID, len(data), len(files), count, nonImage, sample)
 	return out
 }
 
@@ -320,8 +402,8 @@ func (a *App) ensureReaderState(bookID string, chapterUID int64) {
 
 // ---------------------------------------------------------------- helpers
 
-func (a *App) downloadTar(ctx context.Context, tarURL string) ([]byte, error) {
-	return a.web.DownloadResource(ctx, tarURL)
+func (a *App) downloadTar(ctx context.Context, tarURL, referer string) ([]byte, error) {
+	return a.web.DownloadResourceAs(ctx, tarURL, referer)
 }
 
 func parseTar(data []byte) (map[string][]byte, error) { return web.ParseTar(data) }

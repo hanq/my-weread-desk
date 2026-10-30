@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { api } from '../api';
 import { Icon } from '../icons';
@@ -16,12 +16,25 @@ export function ShelfView() {
   const [sort, setSort] = useState<Sort>('recent');
   const [query, setQuery] = useState('');
   const [menu, setMenu] = useState<{ book: Book; x: number; y: number } | null>(null);
+  const [menuPickingGroup, setMenuPickingGroup] = useState(false);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const openingRef = useRef<string | null>(null);
+  // 'all' | 'ungrouped' | a folder id.
+  const [groupFilter, setGroupFilter] = useState('all');
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  // Enter and blur both fire on an inline editor; the guard keeps one save.
+  const submittingRef = useRef(false);
 
   const books = useMemo(() => {
     let list = app.books;
     if (filter === 'finished') list = list.filter((b) => b.finished);
     if (filter === 'reading') list = list.filter((b) => !b.finished && b.lastRead > 0);
     if (filter === 'mp') list = list.filter((b) => b.isMp);
+    if (groupFilter === 'ungrouped') list = list.filter((b) => !b.groupId);
+    else if (groupFilter !== 'all') list = list.filter((b) => b.groupId === groupFilter);
     const q = query.trim().toLowerCase();
     if (q) list = list.filter((b) => b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q));
 
@@ -38,18 +51,43 @@ export function ShelfView() {
       sorted.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'));
     }
     return sorted;
-  }, [app.books, filter, query, sort]);
+  }, [app.books, filter, groupFilter, query, sort]);
 
-  const open = (book: Book) => {
+  const open = async (book: Book) => {
+    if (book.isAudio) {
+      // Audiobook albums have tracks, not chapters. Opening the text reader
+      // would fail with a confusing "no chapters" error.
+      toast('有声书暂不支持在应用内播放', 'info');
+      return;
+    }
     if (book.isMp) {
       navigate({ name: 'mp' });
       return;
     }
-    navigate({ name: 'detail', bookId: book.id });
+    if (openingRef.current) return;
+    openingRef.current = book.id;
+    setOpeningId(book.id);
+    try {
+      const detail = await api.bookDetail(book.id);
+      const chapterUid = detail.progress?.chapterUid || detail.chapters[0]?.uid || 0;
+      if (chapterUid > 0) {
+        navigate({ name: 'reader', bookId: book.id, chapterUid });
+      } else {
+        navigate({ name: 'detail', bookId: book.id });
+      }
+    } catch {
+      // Offline or a failed detail lookup should still leave a way into the
+      // book; the detail page owns the retry and download controls.
+      navigate({ name: 'detail', bookId: book.id });
+    } finally {
+      openingRef.current = null;
+      setOpeningId(null);
+    }
   };
 
   const mutate = (book: Book, action: string) => {
     setMenu(null);
+    setMenuPickingGroup(false);
     api
       .mutateShelf(book.id, action)
       .then(() => api.books())
@@ -58,6 +96,78 @@ export function ShelfView() {
         toast(action === 'remove' ? '已移出书架' : '已更新', 'success');
       })
       .catch((e: unknown) => toast(String((e as Error).message || e), 'error'));
+  };
+
+  const refreshLibrary = async () => {
+    const [books, groups] = await Promise.all([api.books(), api.groups()]);
+    store.set({ books, groups });
+  };
+
+  const reportError = (e: unknown) => toast(String((e as Error).message || e), 'error');
+
+  const submitGroup = async () => {
+    if (submittingRef.current) return;
+    const name = draft.trim();
+    if (!name) {
+      setCreating(false);
+      return;
+    }
+    submittingRef.current = true;
+    try {
+      await api.createGroup(name);
+      setCreating(false);
+      setDraft('');
+      await refreshLibrary();
+      toast('已创建分组', 'success');
+    } catch (e) {
+      reportError(e);
+    } finally {
+      submittingRef.current = false;
+    }
+  };
+
+  const commitRename = async (groupId: string) => {
+    if (submittingRef.current) return;
+    const name = editDraft.trim();
+    const target = app.groups.find((g) => g.id === groupId);
+    if (!name || !target || name === target.name) {
+      setEditingGroup(null);
+      return;
+    }
+    submittingRef.current = true;
+    try {
+      await api.renameGroup(groupId, name);
+      setEditingGroup(null);
+      await refreshLibrary();
+    } catch (e) {
+      reportError(e);
+    } finally {
+      submittingRef.current = false;
+    }
+  };
+
+  const removeGroup = async (groupId: string) => {
+    if (!window.confirm('删除这个分组？书籍不会被移出书架。')) return;
+    try {
+      await api.deleteGroup(groupId);
+      if (groupFilter === groupId) setGroupFilter('all');
+      await refreshLibrary();
+      toast('已删除分组', 'success');
+    } catch (e) {
+      reportError(e);
+    }
+  };
+
+  const moveToGroup = async (book: Book, groupId: string) => {
+    setMenu(null);
+    setMenuPickingGroup(false);
+    try {
+      await api.setBookGroup([book.id], groupId);
+      await refreshLibrary();
+      toast(groupId ? '已移动到分组' : '已取消分组', 'success');
+    } catch (e) {
+      reportError(e);
+    }
   };
 
   return (
@@ -88,8 +198,75 @@ export function ShelfView() {
         </button>
       </div>
 
+      <div className="shelf-groups">
+        <button className={`group-chip${groupFilter === 'all' ? ' on' : ''}`} onClick={() => setGroupFilter('all')}>
+          <Icon name="folder" size={14} /> 全部
+        </button>
+        {app.groups.map((g) =>
+          editingGroup === g.id ? (
+            <input
+              key={g.id}
+              className="group-input"
+              autoFocus
+              value={editDraft}
+              onChange={(e) => setEditDraft(e.target.value)}
+              onBlur={() => void commitRename(g.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void commitRename(g.id);
+                if (e.key === 'Escape') setEditingGroup(null);
+              }}
+            />
+          ) : (
+            <button
+              key={g.id}
+              className={`group-chip${groupFilter === g.id ? ' on' : ''}`}
+              onClick={() => setGroupFilter(g.id)}
+              onDoubleClick={() => {
+                setEditingGroup(g.id);
+                setEditDraft(g.name);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                void removeGroup(g.id);
+              }}
+              title="双击重命名，右键删除"
+            >
+              <Icon name="folder" size={14} /> {g.name}
+              <span className="count">{g.bookIds?.length ?? 0}</span>
+            </button>
+          ),
+        )}
+        <button
+          className={`group-chip${groupFilter === 'ungrouped' ? ' on' : ''}`}
+          onClick={() => setGroupFilter('ungrouped')}
+        >
+          未分组
+        </button>
+        {creating ? (
+          <input
+            className="group-input"
+            autoFocus
+            value={draft}
+            placeholder="分组名称"
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => void submitGroup()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void submitGroup();
+              if (e.key === 'Escape') {
+                setCreating(false);
+                setDraft('');
+              }
+            }}
+          />
+        ) : (
+          <button className="group-chip ghost" onClick={() => setCreating(true)} title="新建分组">
+            <Icon name="plus" size={14} /> 新建
+          </button>
+        )}
+      </div>
+
       <div className="shelf-toolbar">
-        <div className="input" style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 320 }}>
+        <div className="input shelf-search">
           <Icon name="search" size={14} />
           <input
             value={query}
@@ -150,10 +327,13 @@ export function ShelfView() {
             {books.map((b) => (
               <button
                 key={b.id}
-                className="book-card"
-                onClick={() => open(b)}
+                className={`book-card${openingId === b.id ? ' opening' : ''}`}
+                onClick={() => void open(b)}
+                title="点击继续阅读；右键打开更多操作"
+                aria-busy={openingId === b.id}
                 onContextMenu={(e) => {
                   e.preventDefault();
+                  setMenuPickingGroup(false);
                   setMenu({ book: b, x: e.clientX, y: e.clientY });
                 }}
               >
@@ -164,6 +344,12 @@ export function ShelfView() {
                     <div className="fallback">{b.title}</div>
                   )}
                   {b.finished ? <span className="cached">已读完</span> : null}
+                  {b.isAudio ? <span className="audio-badge">有声</span> : null}
+                  {openingId === b.id ? (
+                    <span className="book-opening">
+                      <span className="spinner" />
+                    </span>
+                  ) : null}
                 </div>
                 <div className="book-title">{b.title}</div>
                 <div className="book-author">{b.author || (b.isMp ? '公众号' : '')}</div>
@@ -175,10 +361,13 @@ export function ShelfView() {
             {books.map((b) => (
               <div
                 key={b.id}
-                className="book-row"
-                onClick={() => open(b)}
+                className={`book-row${openingId === b.id ? ' opening' : ''}`}
+                onClick={() => void open(b)}
+                title="点击继续阅读；右键打开更多操作"
+                aria-busy={openingId === b.id}
                 onContextMenu={(e) => {
                   e.preventDefault();
+                  setMenuPickingGroup(false);
                   setMenu({ book: b, x: e.clientX, y: e.clientY });
                 }}
               >
@@ -191,12 +380,16 @@ export function ShelfView() {
                   </div>
                   <div className="faint" style={{ fontSize: 11.5 }}>
                     {b.author}
+                    {b.groupName ? ` · ${b.groupName}` : ''}
                     {b.category ? ` · ${b.category}` : ''}
+                    {b.isAudio ? ' · 有声' : ''}
                   </div>
                 </div>
+                {openingId === b.id ? <span className="spinner" /> : null}
                 {b.finished ? <span className="chip">已读完</span> : null}
                 {b.secret ? <span className="chip">私密</span> : null}
                 {b.isMp ? <span className="chip accent">公众号</span> : null}
+                {b.isAudio ? <span className="chip">有声</span> : null}
               </div>
             ))}
           </div>
@@ -205,7 +398,7 @@ export function ShelfView() {
 
       {menu ? (
         <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setMenu(null)} onContextMenu={(e) => e.preventDefault()} />
+          <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => { setMenu(null); setMenuPickingGroup(false); }} onContextMenu={(e) => e.preventDefault()} />
           <div
             style={{
               position: 'fixed',
@@ -213,6 +406,8 @@ export function ShelfView() {
               top: Math.min(menu.y, window.innerHeight - 200),
               zIndex: 41,
               width: 178,
+              maxHeight: 'min(420px, 70vh)',
+              overflowY: 'auto',
               padding: 5,
               borderRadius: 9,
               background: '#232838',
@@ -220,18 +415,40 @@ export function ShelfView() {
               boxShadow: 'var(--shadow-2)',
             }}
           >
-            <MenuItem icon="book" label="打开详情" onClick={() => { setMenu(null); navigate({ name: 'detail', bookId: menu.book.id }); }} />
-            <MenuItem
-              icon="check"
-              label={menu.book.finished ? '标记未读完' : '标记已读完'}
-              onClick={() => mutate(menu.book, menu.book.finished ? 'unfinish' : 'finish')}
-            />
-            <MenuItem
-              icon="lock"
-              label={menu.book.secret ? '取消私密' : '设为私密'}
-              onClick={() => mutate(menu.book, menu.book.secret ? 'public' : 'secret')}
-            />
-            <MenuItem icon="close" label="移出书架" danger onClick={() => mutate(menu.book, 'remove')} />
+            {menuPickingGroup ? (
+              <>
+                <button className="menu-back" onClick={() => setMenuPickingGroup(false)}>
+                  <Icon name="left" size={13} /> 返回
+                </button>
+                <MenuItem icon="folder" label="不分组" onClick={() => void moveToGroup(menu.book, '')} />
+                {app.groups.map((g) => (
+                  <MenuItem
+                    key={g.id}
+                    icon="folder"
+                    label={g.name}
+                    onClick={() => void moveToGroup(menu.book, g.id)}
+                  />
+                ))}
+                {app.groups.length === 0 ? <div className="menu-empty">还没有分组</div> : null}
+              </>
+            ) : (
+              <>
+                <MenuItem icon="book" label="继续阅读" onClick={() => { setMenu(null); void open(menu.book); }} />
+                <MenuItem icon="book" label="打开详情" onClick={() => { setMenu(null); navigate({ name: 'detail', bookId: menu.book.id }); }} />
+                <MenuItem icon="folder" label="移动到分组" onClick={() => setMenuPickingGroup(true)} />
+                <MenuItem
+                  icon="check"
+                  label={menu.book.finished ? '标记未读完' : '标记已读完'}
+                  onClick={() => mutate(menu.book, menu.book.finished ? 'unfinish' : 'finish')}
+                />
+                <MenuItem
+                  icon="lock"
+                  label={menu.book.secret ? '取消私密' : '设为私密'}
+                  onClick={() => mutate(menu.book, menu.book.secret ? 'public' : 'secret')}
+                />
+                <MenuItem icon="close" label="移出书架" danger onClick={() => mutate(menu.book, 'remove')} />
+              </>
+            )}
           </div>
         </>
       ) : null}
@@ -245,7 +462,7 @@ function MenuItem({
   onClick,
   danger,
 }: {
-  icon: 'book' | 'check' | 'lock' | 'close';
+  icon: 'book' | 'check' | 'lock' | 'close' | 'folder';
   label: string;
   onClick: () => void;
   danger?: boolean;
