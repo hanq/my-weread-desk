@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from '../api';
 import { Icon } from '../icons';
-import { toast } from '../store';
-import type { ReadStats } from '../types';
+import { store, toast } from '../store';
+import type { DeviceReadStats, ReadStats } from '../types';
 
 const MODES: [string, string][] = [
   ['weekly', '本周'],
@@ -15,24 +15,58 @@ const MODES: [string, string][] = [
 export function StatsView() {
   const [mode, setMode] = useState('weekly');
   const [stats, setStats] = useState<ReadStats | null>(null);
+  const [deviceStats, setDeviceStats] = useState<DeviceReadStats | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const hasStats = useRef(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true);
+    setError('');
+    api
+      .deviceStats()
+      .then(setDeviceStats)
+      .catch(() => undefined);
     api
       .stats(mode, 0)
-      .then(setStats)
-      .catch((e: unknown) => toast(String((e as Error).message || e), 'error'))
+      .then((data) => {
+        hasStats.current = true;
+        setStats(data);
+      })
+      .catch((e: unknown) => {
+        const message = String((e as Error).message || e);
+        if (hasStats.current) {
+          toast(message, 'error');
+        } else {
+          setError(message);
+        }
+      })
       .finally(() => setLoading(false));
   }, [mode]);
 
-  const max = Math.max(1, ...(stats?.dailyReadTimes ?? [0]));
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const relogin = useCallback(async () => {
+    try {
+      await api.logout();
+      store.set({ auth: { loggedIn: false, hasApiKey: false }, books: [] });
+    } catch (e) {
+      toast(String((e as Error).message || e), 'error');
+    }
+  }, []);
+
+  // Go marshals a nil slice as null, and the API omits dailyReadTimes for
+  // periods without records, so the render below must not assume an array.
+  const daily = stats?.dailyReadTimes ?? [];
+  const max = Math.max(1, ...daily);
 
   return (
     <>
       <div className="page-head">
         <h1>阅读统计</h1>
-        <span className="sub">数据来自微信读书</span>
+        <span className="sub">账号数据来自微信读书 · 本设备由 MyWeReadDesk 记录</span>
         <div className="grow" />
         <div className="seg">
           {MODES.map(([k, label]) => (
@@ -41,24 +75,46 @@ export function StatsView() {
             </button>
           ))}
         </div>
-        <button
-          className="icon-btn"
-          title="刷新"
-          onClick={() =>
-            api
-              .stats(mode, 0)
-              .then(setStats)
-              .catch((e: unknown) => toast(String((e as Error).message || e), 'error'))
-          }
-        >
+        <button className="icon-btn" title="刷新" onClick={load}>
           <Icon name="refresh" size={16} />
         </button>
       </div>
 
       <div className="page-body">
+        {deviceStats ? (
+          <div style={{ marginBottom: 20 }}>
+            <div className="stat-grid">
+              <StatCard k={`本设备阅读 · ${deviceStats.client}`} v={formatDuration(deviceStats.totalSeconds)} />
+              <StatCard k="本设备今日" v={formatDuration(deviceStats.todaySeconds)} />
+            </div>
+            <p className="faint" style={{ fontSize: 12, marginTop: 8 }}>
+              微信读书只提供账号汇总，不提供按客户端拆分；本设备时长由 {deviceStats.client} 在本地记录。
+            </p>
+          </div>
+        ) : null}
         {loading && !stats ? (
           <div className="empty">
             <div className="spinner" />
+          </div>
+        ) : error ? (
+          <div className="empty">
+            <Icon name="chart" size={32} />
+            <p style={{ maxWidth: 520 }}>{error}</p>
+            {/旧版网页|需要登录|登录/.test(error) ? (
+              <p className="faint" style={{ maxWidth: 520, fontSize: 12 }}>
+                阅读统计需要新版扫码登录；旧版网页凭据只能读取书架、正文和划线。
+              </p>
+            ) : null}
+            <div className="row">
+              {/旧版网页|需要登录|登录/.test(error) ? (
+                <button className="btn btn-primary" onClick={() => void relogin()}>
+                  退出并重新扫码
+                </button>
+              ) : null}
+              <button className="btn btn-ghost" onClick={load}>
+                重试
+              </button>
+            </div>
           </div>
         ) : !stats ? (
           <div className="empty">
@@ -77,7 +133,7 @@ export function StatsView() {
             <div className="stat-card">
               <div className="k">每日阅读时长</div>
               <div className="bars">
-                {(stats.dailyReadTimes.length ? stats.dailyReadTimes : new Array(7).fill(0)).map((v, i) => (
+                {(daily.length ? daily : new Array(7).fill(0)).map((v, i) => (
                   <div
                     key={i}
                     style={{ height: `${Math.max(2, (v / max) * 100)}%` }}
