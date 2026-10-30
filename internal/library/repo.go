@@ -29,14 +29,18 @@ func (s *Store) ReplaceShelf(books []weread.Book) error {
 	}
 	stmt, err := tx.Prepare(`INSERT INTO book
 		(id,title,author,cover,category,intro,rating,rating_count,word_count,finished,secret,is_mp,
-		 last_read,update_at,shelf_order,in_shelf,updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)
+		 is_audio,track_count,group_id,group_name,group_source,last_read,update_at,shelf_order,in_shelf,updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)
 		ON CONFLICT(id) DO UPDATE SET
 		 title=excluded.title, author=excluded.author, cover=excluded.cover,
 		 category=excluded.category, intro=CASE WHEN excluded.intro<>'' THEN excluded.intro ELSE book.intro END,
 		 rating=CASE WHEN excluded.rating>0 THEN excluded.rating ELSE book.rating END,
 		 word_count=CASE WHEN excluded.word_count>0 THEN excluded.word_count ELSE book.word_count END,
 		 finished=excluded.finished, secret=excluded.secret, is_mp=excluded.is_mp,
+		 is_audio=excluded.is_audio, track_count=excluded.track_count,
+		 group_id=CASE WHEN book.group_source='local' THEN book.group_id ELSE excluded.group_id END,
+		 group_name=CASE WHEN book.group_source='local' THEN book.group_name ELSE excluded.group_name END,
+		 group_source=CASE WHEN book.group_source='local' THEN book.group_source ELSE excluded.group_source END,
 		 last_read=excluded.last_read, update_at=excluded.update_at,
 		 shelf_order=excluded.shelf_order, in_shelf=1, updated_at=excluded.updated_at`)
 	if err != nil {
@@ -45,9 +49,14 @@ func (s *Store) ReplaceShelf(books []weread.Book) error {
 	defer stmt.Close()
 
 	for i, b := range books {
+		source := ""
+		if b.GroupID != "" {
+			source = "cloud"
+		}
 		if _, err := stmt.Exec(
 			b.ID, b.Title, b.Author, b.Cover, b.Category, b.Intro, b.Rating, b.RatingN,
 			b.WordCount, boolInt(b.Finished), boolInt(b.Secret), boolInt(b.IsMP),
+			boolInt(b.IsAudio), b.TrackCount, b.GroupID, b.GroupName, source,
 			b.LastRead, b.UpdateAt, i, now,
 		); err != nil {
 			return err
@@ -70,16 +79,19 @@ func (s *Store) UpsertBook(b weread.Book) error {
 		 rating_count=excluded.rating_count,
 		 word_count=CASE WHEN excluded.word_count>0 THEN excluded.word_count ELSE book.word_count END,
 		 finished=excluded.finished, secret=excluded.secret, is_mp=excluded.is_mp,
+		 is_audio=excluded.is_audio,
+		 track_count=CASE WHEN excluded.track_count>0 THEN excluded.track_count ELSE book.track_count END,
 		 last_read=CASE WHEN excluded.last_read>0 THEN excluded.last_read ELSE book.last_read END,
 		 update_at=excluded.update_at, updated_at=excluded.updated_at`,
 		b.ID, b.Title, b.Author, b.Cover, b.Category, b.Intro, b.Rating, b.RatingN,
 		b.WordCount, boolInt(b.Finished), boolInt(b.Secret), boolInt(b.IsMP),
+		boolInt(b.IsAudio), b.TrackCount,
 		b.LastRead, b.UpdateAt, time.Now().Unix())
 	return err
 }
 
 const bookColumns = `id,title,author,cover,category,intro,rating,rating_count,word_count,
-	finished,secret,is_mp,last_read,update_at`
+	finished,secret,is_mp,is_audio,track_count,group_id,group_name,last_read,update_at`
 
 // Books returns the cached shelf ordered by the last sync order.
 func (s *Store) Books() ([]weread.Book, error) {
@@ -137,12 +149,13 @@ func (s *Store) BookFormat(bookID string) string {
 
 func scanBookRow(row *sql.Row) (*weread.Book, error) {
 	var (
-		b                      weread.Book
-		finished, secret, isMP int
+		b                               weread.Book
+		finished, secret, isMP, isAudio int
 	)
 	err := row.Scan(
 		&b.ID, &b.Title, &b.Author, &b.Cover, &b.Category, &b.Intro, &b.Rating,
-		&b.RatingN, &b.WordCount, &finished, &secret, &isMP, &b.LastRead, &b.UpdateAt,
+		&b.RatingN, &b.WordCount, &finished, &secret, &isMP, &isAudio, &b.TrackCount,
+		&b.GroupID, &b.GroupName, &b.LastRead, &b.UpdateAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -153,6 +166,7 @@ func scanBookRow(row *sql.Row) (*weread.Book, error) {
 	b.Finished = finished != 0
 	b.Secret = secret != 0
 	b.IsMP = isMP != 0
+	b.IsAudio = isAudio != 0
 	return &b, nil
 }
 
@@ -160,21 +174,213 @@ func scanBooks(rows *sql.Rows, withOrder bool) ([]weread.Book, error) {
 	var out []weread.Book
 	for rows.Next() {
 		var (
-			b                             weread.Book
-			finished, secret, isMP, order int
+			b                                      weread.Book
+			finished, secret, isMP, isAudio, order int
 		)
 		if err := rows.Scan(
 			&b.ID, &b.Title, &b.Author, &b.Cover, &b.Category, &b.Intro, &b.Rating,
-			&b.RatingN, &b.WordCount, &finished, &secret, &isMP, &b.LastRead, &b.UpdateAt, &order,
+			&b.RatingN, &b.WordCount, &finished, &secret, &isMP, &isAudio, &b.TrackCount,
+			&b.GroupID, &b.GroupName, &b.LastRead, &b.UpdateAt, &order,
 		); err != nil {
 			return nil, err
 		}
 		b.Finished = finished != 0
 		b.Secret = secret != 0
 		b.IsMP = isMP != 0
+		b.IsAudio = isAudio != 0
 		out = append(out, b)
 	}
 	return out, rows.Err()
+}
+
+// ---------------------------------------------------------------- groups
+
+// ReplaceGroups mirrors the cloud folder list. Local folders are never touched;
+// a locally assigned membership is preserved by ReplaceShelf, which consults
+// book.group_source.
+func (s *Store) ReplaceGroups(groups []weread.ShelfGroup) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(`DELETE FROM shelf_group WHERE source='cloud'`); err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`INSERT INTO shelf_group(id,name,source,sort_order,updated_at)
+		VALUES (?,?,'cloud',?,?)
+		ON CONFLICT(id) DO UPDATE SET
+		 name=excluded.name, source=excluded.source,
+		 sort_order=excluded.sort_order, updated_at=excluded.updated_at`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	now := time.Now().Unix()
+	for i, g := range groups {
+		if g.ID == "" {
+			continue
+		}
+		if _, err := stmt.Exec(g.ID, g.Name, i, now); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// Groups returns the cached folders with their current membership. Membership
+// is derived from the book table so local and cloud assignments resolve through
+// one path instead of two competing records.
+func (s *Store) Groups() ([]weread.ShelfGroup, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rows, err := s.db.Query(`SELECT id,name,source,sort_order FROM shelf_group
+		ORDER BY sort_order ASC, name ASC`)
+	if err != nil {
+		return nil, err
+	}
+	var out []weread.ShelfGroup
+	index := map[string]int{}
+	for rows.Next() {
+		var g weread.ShelfGroup
+		if err := rows.Scan(&g.ID, &g.Name, &g.Source, &g.Sort); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		index[g.ID] = len(out)
+		out = append(out, g)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	members, err := s.db.Query(`SELECT group_id,id FROM book
+		WHERE in_shelf=1 AND group_id<>'' ORDER BY shelf_order ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer members.Close()
+	for members.Next() {
+		var groupID, bookID string
+		if err := members.Scan(&groupID, &bookID); err != nil {
+			return nil, err
+		}
+		if at, ok := index[groupID]; ok {
+			out[at].BookIDs = append(out[at].BookIDs, bookID)
+		}
+	}
+	return out, members.Err()
+}
+
+// UpsertGroup creates or renames a local folder.
+func (s *Store) UpsertGroup(g weread.ShelfGroup) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	source := g.Source
+	if source == "" {
+		source = "local"
+	}
+	_, err := s.db.Exec(`INSERT INTO shelf_group(id,name,source,sort_order,updated_at)
+		VALUES (?,?,?,?,?)
+		ON CONFLICT(id) DO UPDATE SET
+		 name=excluded.name, source=excluded.source,
+		 sort_order=excluded.sort_order, updated_at=excluded.updated_at`,
+		g.ID, g.Name, source, g.Sort, time.Now().Unix())
+	return err
+}
+
+// DeleteGroup removes a folder and clears its membership. group_source is reset
+// rather than set to local so a cloud folder (and its membership) can be
+// restored by the next shelf sync; a local folder has no cloud record to
+// restore, so clearing is final for it.
+func (s *Store) DeleteGroup(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(`UPDATE book SET group_id='', group_name='', group_source=''
+		WHERE group_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM shelf_group WHERE id=?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// Group returns one folder.
+func (s *Store) Group(id string) (weread.ShelfGroup, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var g weread.ShelfGroup
+	err := s.db.QueryRow(`SELECT id,name,source,sort_order FROM shelf_group WHERE id=?`, id).
+		Scan(&g.ID, &g.Name, &g.Source, &g.Sort)
+	if errors.Is(err, sql.ErrNoRows) {
+		return g, ErrNotFound
+	}
+	return g, err
+}
+
+// RenameGroup changes a folder's display name without touching its membership.
+func (s *Store) RenameGroup(id, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	res, err := s.db.Exec(`UPDATE shelf_group SET name=?, updated_at=? WHERE id=?`,
+		name, time.Now().Unix(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	// Keep the denormalised copy on the books in sync so the shelf renders the
+	// new name without a second lookup.
+	_, err = s.db.Exec(`UPDATE book SET group_name=? WHERE group_id=?`, name, id)
+	return err
+}
+
+// SetBookGroup assigns books to a folder, or clears the assignment when groupID
+// is empty. The assignment is marked local so a later shelf sync does not move
+// the books back to their cloud folder.
+func (s *Store) SetBookGroup(bookIDs []string, groupID, groupName string) error {
+	if len(bookIDs) == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.Prepare(`UPDATE book SET group_id=?, group_name=?, group_source='local'
+		WHERE id=?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for _, id := range bookIDs {
+		if id == "" {
+			continue
+		}
+		if _, err := stmt.Exec(groupID, groupName, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // ---------------------------------------------------------------- chapters
@@ -315,6 +521,21 @@ func (s *Store) DropChapterContent(bookID string) error {
 	defer s.mu.Unlock()
 	_, err := s.db.Exec(`DELETE FROM chapter_content WHERE book_id=?`, bookID)
 	return err
+}
+
+// DropChaptersWithMissingImages removes decoded chapters whose image blocks
+// were never resolved, so the next open reparses them with the current
+// resource handling.
+func (s *Store) DropChaptersWithMissingImages() (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	res, err := s.db.Exec(`DELETE FROM chapter_content
+		WHERE blocks_json LIKE '%"kind":"image"%' AND blocks_json LIKE '%"class":"missing"%'`)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
 }
 
 // ---------------------------------------------------------------- progress

@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 3
+const schemaVersion = 6
 
 // Store wraps the SQLite cache. It intentionally uses a single connection:
 // the app is a single user desktop client and serialising writes removes every
@@ -63,11 +63,23 @@ func (s *Store) migrate() error {
 			finished INTEGER NOT NULL DEFAULT 0,
 			secret INTEGER NOT NULL DEFAULT 0,
 			is_mp INTEGER NOT NULL DEFAULT 0,
+			is_audio INTEGER NOT NULL DEFAULT 0,
+			track_count INTEGER NOT NULL DEFAULT 0,
+			group_id TEXT NOT NULL DEFAULT '',
+			group_name TEXT NOT NULL DEFAULT '',
+			group_source TEXT NOT NULL DEFAULT '',
 			last_read INTEGER NOT NULL DEFAULT 0,
 			update_at INTEGER NOT NULL DEFAULT 0,
 			shelf_order INTEGER NOT NULL DEFAULT 0,
 			in_shelf INTEGER NOT NULL DEFAULT 0,
 			format TEXT NOT NULL DEFAULT '',
+			updated_at INTEGER NOT NULL DEFAULT 0
+		)`,
+		`CREATE TABLE IF NOT EXISTS shelf_group (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL DEFAULT '',
+			source TEXT NOT NULL DEFAULT 'cloud',
+			sort_order INTEGER NOT NULL DEFAULT 0,
 			updated_at INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_book_shelf ON book(in_shelf, shelf_order)`,
@@ -124,6 +136,35 @@ func (s *Store) migrate() error {
 			fetched_at INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (mode, base_time)
 		)`,
+		`CREATE TABLE IF NOT EXISTS device_read_time (
+			day TEXT PRIMARY KEY,
+			seconds INTEGER NOT NULL DEFAULT 0,
+			updated_at INTEGER NOT NULL DEFAULT 0
+		)`,
+		// Retrieval index. The chunk table stores the text and, more importantly,
+		// the block span so an answer can be opened at the exact paragraph.
+		`CREATE TABLE IF NOT EXISTS rag_index (
+			book_id TEXT PRIMARY KEY,
+			status TEXT NOT NULL DEFAULT 'pending',
+			chunker_version INTEGER NOT NULL DEFAULT 1,
+			chunk_count INTEGER NOT NULL DEFAULT 0,
+			char_count INTEGER NOT NULL DEFAULT 0,
+			error TEXT NOT NULL DEFAULT '',
+			updated_at INTEGER NOT NULL DEFAULT 0
+		)`,
+		`CREATE TABLE IF NOT EXISTS rag_chunk (
+			book_id TEXT NOT NULL,
+			seq INTEGER NOT NULL,
+			chapter_uid INTEGER NOT NULL,
+			chapter_idx INTEGER NOT NULL,
+			chapter_title TEXT NOT NULL DEFAULT '',
+			block_start INTEGER NOT NULL,
+			block_end INTEGER NOT NULL,
+			char_count INTEGER NOT NULL,
+			text TEXT NOT NULL,
+			PRIMARY KEY (book_id, seq)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_rag_chunk_book ON rag_chunk(book_id, seq)`,
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -135,11 +176,69 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("library: migrate: %w", err)
 		}
 	}
+	// Existing databases were created before the shelf gained folders and
+	// audiobooks, and CREATE TABLE IF NOT EXISTS cannot add columns. Every
+	// column is added only when PRAGMA reports it missing so the migration is
+	// idempotent across restarts and partial upgrades.
+	for _, col := range []struct{ name, spec string }{
+		{"is_audio", "INTEGER NOT NULL DEFAULT 0"},
+		{"track_count", "INTEGER NOT NULL DEFAULT 0"},
+		{"group_id", "TEXT NOT NULL DEFAULT ''"},
+		{"group_name", "TEXT NOT NULL DEFAULT ''"},
+		{"group_source", "TEXT NOT NULL DEFAULT ''"},
+	} {
+		if err := ensureColumn(tx, "book", col.name, col.spec); err != nil {
+			return err
+		}
+	}
+	// An index on a new column can only be created after the ALTER TABLE pass:
+	// on a database from the previous schema the column does not exist yet.
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_book_group ON book(group_id)`); err != nil {
+		return fmt.Errorf("library: migrate: %w", err)
+	}
 	if _, err := tx.Exec(`INSERT INTO meta(key,value) VALUES('schema',?)
 		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, fmt.Sprint(schemaVersion)); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+// ensureColumn adds a column when the table does not already define it. SQLite
+// has no ADD COLUMN IF NOT EXISTS, so PRAGMA table_info is the only portable
+// way to keep the migration re-runnable.
+func ensureColumn(tx *sql.Tx, table, name, spec string) error {
+	rows, err := tx.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return fmt.Errorf("library: migrate: inspect %s: %w", table, err)
+	}
+	found := false
+	for rows.Next() {
+		var (
+			cid     int
+			colName string
+			colType string
+			notNull int
+			dflt    sql.NullString
+			pk      int
+		)
+		if err := rows.Scan(&cid, &colName, &colType, &notNull, &dflt, &pk); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("library: migrate: read %s: %w", table, err)
+		}
+		if colName == name {
+			found = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	if _, err := tx.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + name + ` ` + spec); err != nil {
+		return fmt.Errorf("library: migrate: add %s.%s: %w", table, name, err)
+	}
+	return nil
 }
 
 // GetMeta reads a meta value.
