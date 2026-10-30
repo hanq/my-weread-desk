@@ -216,7 +216,6 @@
   --r-bg: #fff;
 }
 .word-paper .reader-stage {
-  padding: 0;
   width: 100%;
 }
 .word-paper .paper {
@@ -446,7 +445,6 @@
   --r-bg: #1e1e1e;
 }
 .vs-editor-area .reader-stage {
-  padding: 8px 6px 0 0;
   justify-content: flex-start;
 }
 .vs-editor-area .paper {

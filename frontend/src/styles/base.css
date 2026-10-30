@@ -33,6 +33,15 @@
 
   --titlebar-h: 40px;
   --sidebar-w: 236px;
+
+  /* Motion tokens. Keep decorative motion short and use the same curves so
+   * route changes, panels and feedback feel like one system. */
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.3, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 240ms;
 }
 
 * {
@@ -223,6 +232,7 @@ a {
   border-radius: 7px;
   color: var(--ink-dim);
   font-size: 12.5px;
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
 }
 .seg button.on {
   background: var(--chrome-3);
@@ -318,12 +328,16 @@ a {
   border: 1px solid var(--chrome-line-strong);
   box-shadow: var(--shadow-2);
   z-index: 300;
-  animation: toast-in 0.18s ease;
+  --toast-hold: 2.35s;
+  animation:
+    toast-in var(--dur-base) var(--ease-out),
+    toast-out 220ms var(--ease-in) var(--toast-hold) forwards;
   max-width: 70vw;
 }
 .toast.error {
   border-color: rgba(255, 107, 107, 0.5);
   color: #ffb4b4;
+  --toast-hold: 4.75s;
 }
 .toast.success {
   border-color: rgba(73, 195, 139, 0.45);
@@ -333,5 +347,53 @@ a {
   from {
     opacity: 0;
     transform: translate(-50%, 10px);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
+
+/* Shared entrance for route content. Only opacity and a small translate are
+ * animated so layout and text measurement stay untouched. */
+@keyframes view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Used only while a background sync is in flight, never as constant decoration. */
+@keyframes soft-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-head,
+  .page-body,
+  .settings,
+  .settings-section,
+  .toast,
+  .theme-panel,
+  .toc-panel,
+  .titlebar .brand .dot.syncing,
+  .sidebar .nav-item::before {
+    animation: none !important;
+    transition: none !important;
+  }
+  /* Spinners still need to communicate that work is happening. */
+  .spinner {
+    animation-duration: 1.4s;
+  }
+  /* A blinking caret is motion-sensitive; show a solid caret instead. */
+  .tw-caret,
+  .tw-caret.underline {
+    animation: none !important;
+    opacity: 1 !important;
   }
 }

@@ -20,7 +20,7 @@ export type IconName =
   | 'list' | 'palette' | 'text' | 'moon' | 'sun' | 'download' | 'refresh'
   | 'more' | 'keyboard' | 'columns' | 'numbers' | 'eye' | 'eyeOff' | 'check'
   | 'code' | 'file' | 'folder' | 'chevronDown' | 'chevronRight' | 'star'
-  | 'clock' | 'type' | 'sparkle' | 'folderOpen' | 'lock' | 'external';
+  | 'clock' | 'type' | 'sparkle' | 'folderOpen' | 'lock' | 'external' | 'plus';
 
 const paths: Record<IconName, ReactElement> = {
   book: <><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z" /><path d="M8 3v18" /></>,
@@ -62,6 +62,7 @@ const paths: Record<IconName, ReactElement> = {
   type: <><path d="M3 7V5h10v2M8 5v14M5 19h6" /><path d="M14 12h7M17.5 12v7M15 19h5" /></>,
   sparkle: <><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z" /><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z" /></>,
   lock: <><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
+  plus: <path d="M12 5v14M5 12h14" />,
   external: <><path d="M14 4h6v6M20 4l-9 9" /><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></>,
 };
 

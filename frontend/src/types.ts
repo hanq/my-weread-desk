@@ -14,6 +14,12 @@ export interface Book {
   finished: boolean;
   secret: boolean;
   isMp: boolean;
+  /** Audiobook album: it has tracks, not chapters, so the reader cannot open it. */
+  isAudio?: boolean;
+  trackCount?: number;
+  /** Shelf folder. Absent means ungrouped. */
+  groupId?: string;
+  groupName?: string;
   lastRead: number;
   publisher?: string;
   publishAt?: string;
@@ -21,6 +27,15 @@ export interface Book {
   price?: number;
   paid: boolean;
   updateAt: number;
+}
+
+export interface ShelfGroup {
+  id: string;
+  name: string;
+  /** cloud = mirrored from the account, local = created in this app. */
+  source: 'cloud' | 'local' | string;
+  bookIds?: string[];
+  sort: number;
 }
 
 export interface Chapter {
@@ -177,6 +192,7 @@ export interface WindowSettings {
   maximised: boolean;
   hideOnBlur: boolean;
   remembered: boolean;
+  radius: number;
 }
 
 export interface TypingSettings {
@@ -191,6 +207,12 @@ export interface TypingSettings {
 
 export interface ReaderSettings {
   pageTurnAnimation: boolean;
+  pageMode: 'page' | 'scroll' | string;
+  pageTurnEffect: 'slide' | 'fade' | 'none' | string;
+  wheelTurn: boolean;
+  clickTurn: boolean;
+  showScrollbar: boolean;
+  smoothScroll: boolean;
   autoHideBars: boolean;
   showStatusBar: boolean;
   reportProgress: boolean;
@@ -198,6 +220,46 @@ export interface ReaderSettings {
   reportInterval: number;
   confirmExit: boolean;
   prefetchNext: boolean;
+}
+
+export interface AISettings {
+  enabled: boolean;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  consent: boolean;
+}
+
+export interface RAGStatus {
+  bookId: string;
+  status: string;
+  indexed: boolean;
+  chunkCount: number;
+  charCount: number;
+  error: string;
+  updatedAt: number;
+}
+
+export interface AISource {
+  index: number;
+  bookId: string;
+  chapterUid: number;
+  chapterIdx: number;
+  chapterTitle: string;
+  blockStart: number;
+  blockEnd: number;
+  excerpt: string;
+}
+
+export interface AskEvent {
+  requestId: string;
+  delta?: string;
+  text?: string;
+  sources?: AISource[];
+  model?: string;
+  error?: string;
 }
 
 export interface Settings {
@@ -209,6 +271,20 @@ export interface Settings {
   typing: TypingSettings;
   window: WindowSettings;
   reader: ReaderSettings;
+  ai: AISettings;
+  disguise: {
+    taskbarIcon: boolean;
+    hideTaskbar: boolean;
+    contactName: string;
+    nickname: string;
+    avatar: string;
+    sendOnEnter: boolean;
+    floating: boolean;
+    hoverReveal: boolean;
+    showZone: { x: number; y: number; w: number; h: number };
+    hideZone: { x: number; y: number; w: number; h: number };
+    migrated: boolean;
+  };
   hotkeys: Record<string, string>;
   windowTitle: string;
   hideTray: boolean;
@@ -225,6 +301,13 @@ export interface WindowState {
   skin: string;
   typing: boolean;
   title: string;
+  width: number;
+  height: number;
+}
+
+export interface CursorInfo {
+  x: number;
+  y: number;
   width: number;
   height: number;
 }
@@ -260,6 +343,21 @@ export interface ReadStats {
   readLongest: { bookId: string; title: string; author: string; seconds: number; date: number }[];
   preferCategory: { name: string; seconds: number; ratio: number }[];
   rank: number;
+}
+
+export interface DeviceReadDay {
+  date: string;
+  seconds: number;
+}
+
+/** Local per-installation reading time. WeRead only exposes account totals. */
+export interface DeviceReadStats {
+  client: string;
+  deviceName: string;
+  deviceId: string;
+  totalSeconds: number;
+  todaySeconds: number;
+  daily: DeviceReadDay[];
 }
 
 export interface MPArticle {

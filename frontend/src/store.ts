@@ -3,12 +3,13 @@
 
 import { useSyncExternalStore } from 'react';
 
-import type { AuthState, Book, DownloadState, Settings, WindowState } from './types';
+import type { AuthState, Book, DownloadState, Settings, ShelfGroup, WindowState } from './types';
 
 export type Route =
   | { name: 'shelf' }
   | { name: 'search' }
   | { name: 'stats' }
+  | { name: 'assistant' }
   | { name: 'settings' }
   | { name: 'mp' }
   | { name: 'detail'; bookId: string }
@@ -19,6 +20,7 @@ export interface AppState {
   window: WindowState | null;
   auth: AuthState | null;
   books: Book[];
+  groups: ShelfGroup[];
   downloads: Record<string, DownloadState>;
   route: Route;
   shelfState: 'idle' | 'loading' | 'error';
@@ -32,6 +34,7 @@ const initial: AppState = {
   window: null,
   auth: null,
   books: [],
+  groups: [],
   downloads: {},
   route: { name: 'shelf' },
   shelfState: 'idle',

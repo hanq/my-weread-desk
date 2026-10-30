@@ -70,6 +70,8 @@ export function BookDetailView({ bookId }: { bookId: string }) {
   }
 
   const book = detail.book;
+  const hasProgress = Boolean(detail.progress && detail.progress.chapterUid);
+  const readLabel = hasProgress ? '继续阅读' : '开始阅读';
 
   const read = (chapterUid: number, fromStart = false) => {
     navigate({ name: 'reader', bookId, chapterUid: chapterUid || progressChapter, fromStart });
@@ -82,109 +84,48 @@ export function BookDetailView({ bookId }: { bookId: string }) {
       .catch((e: unknown) => toast(String((e as Error).message || e), 'error'));
   };
 
+  const toggleShelf = () => {
+    api
+      .mutateShelf(bookId, inShelf ? 'remove' : 'add')
+      .then(() => api.books())
+      .then((list) => {
+        store.set({ books: list });
+        toast(inShelf ? '已移出书架' : '已加入书架', 'success');
+      })
+      .catch((e: unknown) => toast(String((e as Error).message || e), 'error'));
+  };
+
+  const clearCache = () => {
+    void api
+      .clearChapterCache(bookId)
+      .then(() => setDetail((prev) => (prev ? { ...prev, cachedCount: 0 } : prev)))
+      .catch((e: unknown) => toast(String((e as Error).message || e), 'error'));
+  };
+
   return (
     <>
       <div className="page-head">
-        <button className="icon-btn" onClick={() => navigate({ name: 'shelf' })}>
+        <button className="icon-btn" onClick={() => navigate({ name: 'shelf' })} title="返回书架">
           <Icon name="left" />
         </button>
         <h1 className="truncate">{book.title}</h1>
         {detail.offline ? <span className="chip">离线</span> : null}
-        <div className="grow" />
-        <button className="btn btn-primary" onClick={() => read(progressChapter)}>
-          <Icon name="book" size={15} />
-          {detail.progress && detail.progress.chapterUid ? '继续阅读' : '开始阅读'}
-        </button>
-        <button className="btn" onClick={() => read(detail.chapters[0]?.uid ?? 0, true)}>
-          从头读
-        </button>
       </div>
 
       <div className="detail">
-        <div className="detail-side">
-          <div className="detail-cover" style={{ position: 'relative' }}>
+        <aside className="detail-side">
+          <div className="detail-cover">
             {book.cover ? (
               <img src={book.cover} alt="" referrerPolicy="no-referrer" />
             ) : (
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  display: 'grid',
-                  placeItems: 'center',
-                  padding: 18,
-                  textAlign: 'center',
-                  background: 'linear-gradient(150deg,#243049,#171b24)',
-                  color: '#c6cede',
-                  fontSize: 15,
-                  lineHeight: 1.5,
-                }}
-              >
-                {book.title}
-              </div>
+              <div className="detail-cover-fallback">{book.title}</div>
             )}
           </div>
-          <button className="btn" onClick={startDownload} disabled={download?.running}>
-            <Icon name="download" size={15} />
-            {download?.running ? '下载中…' : detail.cachedCount > 0 ? '补齐剩余章节' : '下载全书'}
-          </button>
-          {download && (download.running || download.done > 0) ? (
-            <div className="faint" style={{ fontSize: 11.5, lineHeight: 1.6 }}>
-              {download.done}/{download.total} 章 · 失败 {download.failed}
-              <div
-                style={{
-                  height: 4,
-                  borderRadius: 99,
-                  background: 'rgba(255,255,255,0.1)',
-                  marginTop: 6,
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  style={{
-                    height: '100%',
-                    width: `${download.total ? (download.done / download.total) * 100 : 0}%`,
-                    background: 'var(--accent)',
-                    transition: 'width 0.3s ease',
-                  }}
-                />
-              </div>
-              {download.current ? <div className="truncate">正在下载：{download.current}</div> : null}
-            </div>
-          ) : null}
-          <button
-            className="btn btn-ghost"
-            onClick={() =>
-              api
-                .mutateShelf(bookId, inShelf ? 'remove' : 'add')
-                .then(() => api.books())
-                .then((list) => {
-                  store.set({ books: list });
-                  toast(inShelf ? '已移出书架' : '已加入书架', 'success');
-                })
-                .catch((e: unknown) => toast(String((e as Error).message || e), 'error'))
-            }
-          >
-            {inShelf ? '移出书架' : '加入书架'}
-          </button>
-          <div className="faint" style={{ fontSize: 11.5, lineHeight: 1.7 }}>
-            已缓存 {detail.cachedCount}/{detail.chapterCount} 章
-            {detail.cachedCount > 0 ? (
-              <button
-                style={{ display: 'block', color: 'var(--danger)', fontSize: 11.5, padding: 0, marginTop: 4 }}
-                onClick={() => {
-                  void api.clearChapterCache(bookId).then(() => setDetail({ ...detail, cachedCount: 0 }));
-                }}
-              >
-                清除章节缓存
-              </button>
-            ) : null}
-          </div>
-        </div>
+        </aside>
 
         <div className="detail-main">
-          <div>
-            <div className="detail-meta" style={{ marginBottom: 8 }}>
+          <div className="detail-heading">
+            <div className="detail-meta">
               <span>{book.author || '佚名'}</span>
               {book.category ? <span>· {book.category}</span> : null}
               {book.wordCount > 0 ? <span>· {formatWords(book.wordCount)}</span> : null}
@@ -196,18 +137,63 @@ export function BookDetailView({ bookId }: { bookId: string }) {
             ) : null}
           </div>
 
-          <div className="seg" style={{ alignSelf: 'flex-start' }}>
-            {(
-              [
-                ['toc', `目录 ${detail.chapters.length}`],
-                ['intro', '简介'],
-                ['notes', `划线 ${detail.notes.length}`],
-              ] as [Tab, string][]
-            ).map(([k, label]) => (
-              <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
-                {label}
+          <div className="detail-actions">
+            <button className="btn btn-primary" onClick={() => read(progressChapter)}>
+              <Icon name="book" size={15} />
+              {readLabel}
+            </button>
+            <button className="btn" onClick={() => read(detail.chapters[0]?.uid ?? 0, true)}>
+              从头读
+            </button>
+            <button className="btn" onClick={startDownload} disabled={download?.running}>
+              <Icon name="download" size={15} />
+              {download?.running ? '下载中…' : detail.cachedCount > 0 ? '补齐剩余章节' : '下载全书'}
+            </button>
+            <button className="btn btn-ghost" onClick={toggleShelf}>
+              {inShelf ? '移出书架' : '加入书架'}
+            </button>
+            {detail.cachedCount > 0 ? (
+              <button className="btn btn-ghost detail-clear" onClick={clearCache}>
+                清除章节缓存
               </button>
-            ))}
+            ) : null}
+            <span className="detail-cache-note">
+              已缓存 {detail.cachedCount}/{detail.chapterCount} 章
+            </span>
+          </div>
+
+          {download && (download.running || download.done > 0) ? (
+            <div className="detail-download">
+              <div className="detail-download-row">
+                <span>
+                  {download.done}/{download.total} 章 · 失败 {download.failed}
+                </span>
+                {download.current ? <span className="truncate">正在下载：{download.current}</span> : null}
+              </div>
+              <div className="detail-download-bar">
+                <span
+                  style={{
+                    width: `${download.total ? (download.done / download.total) * 100 : 0}%`,
+                  }}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          <div className="detail-tabs">
+            <div className="seg">
+              {(
+                [
+                  ['toc', `目录 ${detail.chapters.length}`],
+                  ['intro', '简介'],
+                  ['notes', `划线 ${detail.notes.length}`],
+                ] as [Tab, string][]
+              ).map(([k, label]) => (
+                <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {tab === 'toc' ? (
@@ -219,14 +205,14 @@ export function BookDetailView({ bookId }: { bookId: string }) {
           ) : tab === 'intro' ? (
             <div className="detail-intro">{book.intro || '这本书没有简介。'}</div>
           ) : (
-            <div className="toc">
+            <div className="detail-notes">
               {detail.notes.length === 0 ? (
                 <div className="empty" style={{ height: 160 }}>
                   <p>还没有划线或想法</p>
                 </div>
               ) : (
                 detail.notes.map((n) => (
-                  <div key={n.id} style={{ padding: '10px 12px', borderBottom: '1px solid var(--chrome-line)' }}>
+                  <div key={n.id} className="detail-note">
                     <div className="faint" style={{ fontSize: 11 }}>
                       {n.chapterName || `第 ${n.chapterUid} 章`}
                     </div>

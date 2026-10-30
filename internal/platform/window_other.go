@@ -16,6 +16,18 @@ func (m *Manager) SetOpacity(float64) error { return nil }
 // SetClickThrough is a no-op.
 func (m *Manager) SetClickThrough(bool) error { return nil }
 
+// SetWindowIcon is a no-op.
+func (m *Manager) SetWindowIcon(string) error { return nil }
+
+// SetTaskbarHidden is a no-op.
+func (m *Manager) SetTaskbarHidden(bool) error { return nil }
+
+// CursorPosition is unsupported.
+func (m *Manager) CursorPosition() CursorInfo { return CursorInfo{} }
+
+// SetWindowRadius is a no-op.
+func (m *Manager) SetWindowRadius(int) error { return nil }
+
 // ClickThrough always reports false.
 func (m *Manager) ClickThrough() bool { return false }
 

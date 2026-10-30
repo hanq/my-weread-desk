@@ -185,9 +185,20 @@ export function ThemePanel({ theme, presets, onChange, onPreset, onClose }: Prop
       </Row>
       <Row label="分栏">
         <div className="seg">
-          {[1, 2].map((n) => (
-            <button key={n} className={theme.columns === n ? 'on' : ''} onClick={() => onChange({ columns: n })}>
-              {n} 栏
+          {(
+            [
+              [0, '自动'],
+              [1, '单栏'],
+              [2, '双栏'],
+            ] as [number, string][]
+          ).map(([n, label]) => (
+            <button
+              key={n}
+              title={n === 0 ? '窗口足够宽时自动分为两栏' : undefined}
+              className={theme.columns === n ? 'on' : ''}
+              onClick={() => onChange({ columns: n })}
+            >
+              {label}
             </button>
           ))}
         </div>

@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import type { JSX } from 'react';
 
 import type { Block } from '../types';
@@ -20,7 +20,7 @@ export function measureBlocks(blocks: Block[]): { metrics: BlockMetrics[]; total
 }
 
 export function blockTextLength(b: Block): number {
-  if (b.kind === 'image' || b.kind === 'divider') return 0;
+  if (b.kind === 'image' || b.kind === 'divider' || b.kind === 'chapter') return 0;
   return Array.from(b.text ?? '').length;
 }
 
@@ -60,6 +60,45 @@ function TextContent({ block, metric, reveal, caretClass, caretRef, showCaret, f
   );
 }
 
+function ReaderImage({ src, alt, hidden }: { src: string; alt: string; hidden: boolean }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className={`blk image missing ${hidden ? 'tw-hidden' : ''}`}>
+        <span>{alt ? `${alt}（加载失败）` : '图片加载失败'}</span>
+      </div>
+    );
+  }
+  return (
+    <div className={`blk image ${hidden ? 'tw-hidden' : ''}`}>
+      <img
+        src={src}
+        alt={alt}
+        decoding="async"
+        title="查看大图"
+        role="button"
+        tabIndex={0}
+        aria-label={alt ? `查看大图：${alt}` : '查看大图'}
+        onClick={(event) => {
+          event.stopPropagation();
+          window.dispatchEvent(new CustomEvent('reader:image-open', { detail: { src, alt } }));
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          window.dispatchEvent(new CustomEvent('reader:image-open', { detail: { src, alt } }));
+        }}
+        onLoad={() => window.dispatchEvent(new Event('reader:relayout'))}
+        onError={() => {
+          setFailed(true);
+          window.dispatchEvent(new Event('reader:relayout'));
+        }}
+      />
+    </div>
+  );
+}
+
 export const BlockView = memo(function BlockView(props: Props) {
   const { block, metric, reveal } = props;
   const hiddenByTyping = reveal !== null && reveal <= metric.start && metric.length > 0;
@@ -79,6 +118,10 @@ export const BlockView = memo(function BlockView(props: Props) {
     }
     case 'divider':
       return <div className="blk divider" />;
+    case 'chapter':
+      // The title is rendered through CSS generated content so it does not
+      // enter the text-node walk used for rune offsets.
+      return <div className="blk chapter" data-title={block.text || '下一章'} />;
     case 'image':
       if (!block.src) {
         return (
@@ -88,15 +131,12 @@ export const BlockView = memo(function BlockView(props: Props) {
         );
       }
       return (
-        <div className={`blk image ${hiddenByTyping ? 'tw-hidden' : ''}`}>
-          <img
-            src={block.src}
-            alt={block.alt || ''}
-            loading="lazy"
-            onLoad={() => window.dispatchEvent(new Event('reader:relayout'))}
-            onError={() => window.dispatchEvent(new Event('reader:relayout'))}
-          />
-        </div>
+        <ReaderImage
+          key={block.src}
+          src={block.src}
+          alt={block.alt || ''}
+          hidden={hiddenByTyping}
+        />
       );
     case 'quote':
       return (

@@ -9,6 +9,11 @@ interface Props {
   theme: Theme;
   geometry: Geometry;
   page: number;
+  mode: 'page' | 'scroll';
+  showScrollbar: boolean;
+  clickTurn: boolean;
+  animated: boolean;
+  fading: boolean;
   gutter: boolean;
   typing: TypingSettings;
   reveal: number | null;
@@ -22,8 +27,8 @@ interface Props {
   transparentPaper?: boolean;
   /** Hides the gutter even when the theme asks for line numbers. */
   forceNoGutter?: boolean;
-  /** Skins own the outer margins, so the stage must not add any. */
-  flush?: boolean;
+  /** Skins own the outer margins, so the stage can override its padding. */
+  stagePadding?: string;
 }
 
 export function ReaderCanvas({
@@ -31,6 +36,11 @@ export function ReaderCanvas({
   theme,
   geometry,
   page,
+  mode,
+  showScrollbar,
+  clickTurn,
+  animated,
+  fading,
   gutter,
   typing,
   reveal,
@@ -42,7 +52,7 @@ export function ReaderCanvas({
   onNext,
   transparentPaper,
   forceNoGutter,
-  flush,
+  stagePadding,
 }: Props) {
   const { metrics, total } = useMemo(() => measureBlocks(blocks), [blocks]);
 
@@ -61,7 +71,8 @@ export function ReaderCanvas({
     return -1;
   }, [metrics, reveal, total]);
 
-  const showGutter = gutter && !forceNoGutter;
+  const showGutter = gutter && !forceNoGutter && mode === 'page';
+  const scroll = mode === 'scroll';
   const lines = geometry.linesPerPage;
   const startLine = page * lines;
   const gutterNumbers = showGutter
@@ -73,8 +84,8 @@ export function ReaderCanvas({
   return (
     <div
       ref={stageRef}
-      className="reader-stage"
-      style={flush ? { padding: 0 } : { padding: `${theme.marginY}px ${theme.marginX}px` }}
+      className={`reader-stage${animated ? '' : ' no-anim'}`}
+      style={{ padding: stagePadding ?? `${theme.marginY}px ${theme.marginX}px` }}
     >
       {showGutter ? (
         <div className="gutter">
@@ -84,12 +95,15 @@ export function ReaderCanvas({
         </div>
       ) : null}
 
-      <div className={`paper${transparentPaper ? ' no-surface' : ''}`}>
-        <div className="viewport" ref={viewportRef}>
+      <div className={`paper${transparentPaper ? ' no-surface' : ''}${scroll ? ' scroll-paper' : ''}`}>
+        <div
+          className={`viewport${scroll ? ' scroll-mode' : ''}${scroll && !showScrollbar ? ' hide-scrollbar' : ''}`}
+          ref={viewportRef}
+        >
           <div
-            className="track"
+            className={`track${scroll ? ' scroll-track' : ''}${fading ? ' turn-fade' : ''}`}
             ref={trackRef}
-            style={{ transform: `translateX(${-page * geometry.step}px)` }}
+            style={scroll ? undefined : { transform: `translateX(${-page * geometry.step}px)` }}
           >
             {blocks.map((b, i) => (
               <BlockView
@@ -106,8 +120,12 @@ export function ReaderCanvas({
           </div>
         </div>
 
-        <button className="turn-zone left" aria-label="上一页" onClick={onPrev} tabIndex={-1} />
-        <button className="turn-zone right" aria-label="下一页" onClick={onNext} tabIndex={-1} />
+        {!scroll && clickTurn ? (
+          <>
+            <button className="turn-zone left" aria-label="上一页" onClick={onPrev} tabIndex={-1} />
+            <button className="turn-zone right" aria-label="下一页" onClick={onNext} tabIndex={-1} />
+          </>
+        ) : null}
       </div>
     </div>
   );

@@ -20,6 +20,11 @@ export interface ThemeVarOptions {
   pad?: number;
   gap: number;
   colWidth: number;
+  /** Columns per page. Forced via column-count so a narrow measure cannot
+   * silently collapse a two-column layout into one column. */
+  columns: number;
+  /** Maximum height of inline images; defaults to a font-based guess. */
+  imgMax?: number;
   /** Skins provide their own surface, so the paper keeps its own background. */
   paper?: 'themed' | 'transparent';
   marginX: number;
@@ -46,10 +51,11 @@ export function themeVars(theme: Theme, opts: ThemeVarOptions): CSSProperties {
     '--r-page-w': `${Math.round(opts.paperWidth ?? opts.pageWidth)}px`,
     '--r-text-w': `${Math.round(opts.pageWidth)}px`,
     '--r-col-w': `${Math.round(opts.colWidth)}px`,
+    '--r-cols': String(opts.columns || 1),
     '--r-gap': `${Math.round(opts.gap)}px`,
     '--r-margin-x': `${Math.round(opts.marginX)}px`,
     '--r-margin-y': `${Math.round(opts.marginY)}px`,
-    '--r-img-max': `${Math.round(theme.fontSize * theme.lineHeight * 14)}px`,
+    '--r-img-max': `${Math.round(opts.imgMax ?? theme.fontSize * theme.lineHeight * 14)}px`,
     '--r-paper-pad': `${Math.round(opts.pad ?? 0)}px`,
     '--r-paper-shadow': isTransparent ? 'none' : 'var(--shadow-paper)',
     '--r-paper-radius': isTransparent ? '0px' : '6px',

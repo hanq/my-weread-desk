@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"my-weread-desk/internal/config"
 	"my-weread-desk/internal/library"
 	"my-weread-desk/internal/platform"
+	"my-weread-desk/internal/rag"
 	"my-weread-desk/internal/weread"
 	"my-weread-desk/internal/weread/auth"
 	"my-weread-desk/internal/weread/eink"
@@ -41,6 +43,24 @@ type App struct {
 
 	reporter   *reporter
 	downloader *downloader
+
+	// ragIndex caches one BM25 index per indexed book. asks holds the cancel
+	// function of every in-flight question so the UI can stop a stream.
+	ragIndex *rag.Retriever
+	askMu    sync.Mutex
+	asks     map[string]context.CancelFunc
+
+	hiddenMu      sync.Mutex
+	hidden        bool
+	taskbarMu     sync.Mutex
+	taskbarHidden bool
+	hoverStop     chan struct{}
+
+	imageMu      sync.Mutex
+	imageRetries map[string]bool
+
+	logMu   sync.Mutex
+	logFile *os.File
 }
 
 // New creates the application graph. It is called before wails.Run so that
@@ -79,18 +99,28 @@ func New() (*App, *library.Store, error) {
 		dataDir:      dataDir,
 		platform:     platform.New(),
 		readerStates: map[string]*weread.ReaderState{},
+		imageRetries: map[string]bool{},
+		asks:         map[string]context.CancelFunc{},
+		logFile:      openAppLog(dataDir),
 	}
 	a.reporter = newReporter(a)
 	a.downloader = newDownloader(a)
+	a.ragIndex = rag.NewRetriever(store)
 	return a, store, nil
 }
 
 // Startup is called by Wails once the window exists.
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
+	a.syncWindowTitle()
+	a.repairImageCache()
 	a.reporter.start()
 	a.applyWindowSettings()
+	a.applyDisguise()
 	a.syncWindowBackground()
+	a.hoverStop = make(chan struct{})
+	go a.watchHover(a.hoverStop)
+	go a.watchWindowShape(a.hoverStop)
 }
 
 // syncWindowBackground makes the native window background opaque unless the
@@ -102,7 +132,7 @@ func (a *App) syncWindowBackground() {
 		return
 	}
 	s := a.settings.Get()
-	transparent := s.Theme.Background == "transparent" || s.Theme.Surface == "transparent" || s.Window.Opacity < 0.999
+	transparent := s.Window.Radius > 0 || s.Disguise.Floating || s.Theme.Background == "transparent" || s.Theme.Surface == "transparent" || s.Window.Opacity < 0.999
 	if transparent {
 		runtime.WindowSetBackgroundColour(a.ctx, 0, 0, 0, 0)
 		return
@@ -116,6 +146,26 @@ func (a *App) SetWindowBackground() {
 	a.syncWindowBackground()
 }
 
+// SetWindowRadius clears any legacy native region immediately. The visual
+// radius is painted in CSS (--window-radius), so the slider repaints as soon as
+// the settings store changes; this call only removes a region left by an older
+// build that clipped the HWND with SetWindowRgn.
+func (a *App) SetWindowRadius(radius int) error {
+	if radius < 0 {
+		radius = 0
+	}
+	if radius > 64 {
+		radius = 64
+	}
+	if err := a.platform.SetWindowRadius(radius); err != nil {
+		return err
+	}
+	if a.ctx != nil && radius > 0 {
+		runtime.WindowSetBackgroundColour(a.ctx, 0, 0, 0, 0)
+	}
+	return nil
+}
+
 // FlushProgress reports any pending reading position immediately.
 func (a *App) FlushProgress() {
 	a.reporter.flush()
@@ -126,6 +176,16 @@ func (a *App) Shutdown(ctx context.Context) {
 	a.reporter.flush()
 	a.reporter.stop()
 	a.downloader.stop()
+	if a.hoverStop != nil {
+		close(a.hoverStop)
+		a.hoverStop = nil
+	}
+	a.logMu.Lock()
+	if a.logFile != nil {
+		_ = a.logFile.Close()
+		a.logFile = nil
+	}
+	a.logMu.Unlock()
 	a.platform.UnregisterHotkeys()
 	_ = a.store.Close()
 }
@@ -191,6 +251,7 @@ func (a *App) applyWindowFlags() {
 	if s.Window.ClickThrough {
 		_ = a.platform.SetClickThrough(true)
 	}
+	_ = a.platform.SetWindowRadius(s.Window.Radius)
 	a.registerHotkeys()
 }
 
@@ -209,6 +270,27 @@ func (a *App) SaveSettings(next config.Settings) (config.Settings, error) {
 	if next.Theme.LineHeight < 1 {
 		next.Theme.LineHeight = 1.6
 	}
+	if next.Window.Radius < 0 {
+		next.Window.Radius = 0
+	}
+	if next.Window.Radius > 64 {
+		next.Window.Radius = 64
+	}
+	next.AI.BaseURL = strings.TrimSpace(next.AI.BaseURL)
+	next.AI.Model = strings.TrimSpace(next.AI.Model)
+	next.AI.APIKey = strings.TrimSpace(next.AI.APIKey)
+	if next.AI.Temperature < 0 {
+		next.AI.Temperature = 0
+	}
+	if next.AI.Temperature > 2 {
+		next.AI.Temperature = 2
+	}
+	if next.AI.MaxTokens < 128 {
+		next.AI.MaxTokens = 128
+	}
+	if next.AI.MaxTokens > 8192 {
+		next.AI.MaxTokens = 8192
+	}
 	err := a.settings.Update(func(s *config.Settings) {
 		*s = next
 	})
@@ -217,6 +299,8 @@ func (a *App) SaveSettings(next config.Settings) (config.Settings, error) {
 	}
 	a.applyWindowFlags()
 	a.syncWindowBackground()
+	a.applyDisguise()
+	a.syncWindowTitle()
 	return a.settings.Get(), nil
 }
 
@@ -228,6 +312,7 @@ func (a *App) UpdateSetting(key string, value any) (config.Settings, error) {
 		case "skin":
 			if v, ok := value.(string); ok {
 				s.Skin = v
+				s.WindowTitle = resolveWindowTitle(s.WindowTitle, v)
 			}
 		case "zen":
 			if v, ok := value.(bool); ok {
@@ -243,6 +328,9 @@ func (a *App) UpdateSetting(key string, value any) (config.Settings, error) {
 			}
 		}
 	})
+	if err == nil && key == "skin" {
+		a.syncWindowTitle()
+	}
 	return a.settings.Get(), err
 }
 
@@ -363,11 +451,25 @@ func (a *App) SetZen(on bool) (WindowState, error) {
 
 // SetSkin switches the disguise skin.
 func (a *App) SetSkin(skin string) (WindowState, error) {
-	allowed := map[string]bool{"none": true, "word": true, "vscode": true}
+	allowed := map[string]bool{
+		"none": true, "word": true, "vscode": true,
+		"wechat": true, "dingtalk": true, "feishu": true, "wecom": true,
+	}
 	if !allowed[skin] {
 		skin = "none"
 	}
-	err := a.settings.Update(func(s *config.Settings) { s.Skin = skin })
+	prev := a.settings.Get()
+	title := resolveWindowTitle(prev.WindowTitle, skin)
+	err := a.settings.Update(func(s *config.Settings) {
+		s.Skin = skin
+		s.WindowTitle = title
+	})
+	if err == nil {
+		if a.ctx != nil {
+			runtime.WindowSetTitle(a.ctx, title)
+		}
+		a.applyDisguise()
+	}
 	return a.GetWindowState(), err
 }
 
@@ -381,12 +483,57 @@ func (a *App) SetTyping(on bool) (WindowState, error) {
 func (a *App) HideWindow() {
 	a.saveWindowGeometry()
 	runtime.WindowHide(a.ctx)
+	a.setHidden(true)
 }
 
 // ShowWindow reveals the window.
 func (a *App) ShowWindow() {
 	runtime.WindowShow(a.ctx)
 	runtime.WindowSetAlwaysOnTop(a.ctx, a.settings.Get().Window.AlwaysOnTop)
+	a.setHidden(false)
+}
+
+// ToggleBoss hides the window when it is visible and restores it otherwise.
+func (a *App) ToggleBoss() {
+	if a.isHidden() {
+		a.ShowWindow()
+		return
+	}
+	a.HideWindow()
+}
+
+func (a *App) setHidden(hidden bool) {
+	a.hiddenMu.Lock()
+	a.hidden = hidden
+	a.hiddenMu.Unlock()
+}
+
+func (a *App) isHidden() bool {
+	a.hiddenMu.Lock()
+	defer a.hiddenMu.Unlock()
+	return a.hidden
+}
+
+// CursorPosition reports the pointer and primary screen size for the zone picker.
+func (a *App) CursorPosition() platform.CursorInfo {
+	return a.platform.CursorPosition()
+}
+
+// applyTaskbarHidden re-applies the taskbar visibility only when it changed.
+func (a *App) applyTaskbarHidden(hidden bool) {
+	a.taskbarMu.Lock()
+	if a.taskbarHidden == hidden {
+		a.taskbarMu.Unlock()
+		return
+	}
+	a.taskbarMu.Unlock()
+	if err := a.platform.SetTaskbarHidden(hidden); err != nil {
+		a.logf("切换任务栏按钮失败：%v", err)
+		return
+	}
+	a.taskbarMu.Lock()
+	a.taskbarHidden = hidden
+	a.taskbarMu.Unlock()
 }
 
 // MinimiseWindow minimises to the taskbar.
@@ -454,6 +601,12 @@ func (a *App) registerHotkeys() error {
 		return nil
 	}
 	return a.platform.RegisterHotkeys(bindings, func(name string) {
+		if name == "panic" {
+			// The boss key must work even when the window is hidden; handle it
+			// natively instead of relying on a hidden WebView round-trip.
+			a.ToggleBoss()
+			return
+		}
 		if a.ctx != nil {
 			runtime.EventsEmit(a.ctx, "hotkey", name)
 		}
@@ -462,8 +615,14 @@ func (a *App) registerHotkeys() error {
 
 // Logf writes a line to the in-app log view.
 func (a *App) logf(format string, args ...any) {
+	line := fmt.Sprintf(format, args...)
+	a.logMu.Lock()
+	if a.logFile != nil {
+		_, _ = fmt.Fprintf(a.logFile, "%s %s\n", time.Now().Format("2006-01-02 15:04:05"), line)
+	}
+	a.logMu.Unlock()
 	if a.ctx != nil {
-		runtime.EventsEmit(a.ctx, "log", fmt.Sprintf(format, args...))
+		runtime.EventsEmit(a.ctx, "log", line)
 	}
 }
 

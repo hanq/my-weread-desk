@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, events, runtime } from './api';
 import { Icon } from './icons';
 import { navigate, store, toast, useApp } from './store';
+import { SKIN_OPTIONS, skinLabel } from './skins/registry';
 import { TitleBar } from './components/TitleBar';
 import { Sidebar } from './components/Sidebar';
 import { LoginView } from './views/LoginView';
@@ -12,6 +13,7 @@ import { BookDetailView } from './views/BookDetailView';
 import { ReaderView } from './views/ReaderView';
 import { SettingsView } from './views/SettingsView';
 import { StatsView } from './views/StatsView';
+import { AssistantView } from './views/AssistantView';
 import { MPView } from './views/MPView';
 import type { DownloadState, Settings } from './types';
 
@@ -19,19 +21,39 @@ export default function App() {
   const app = useApp();
   const [booting, setBooting] = useState(true);
   const [bootError, setBootError] = useState('');
+  const [navOpen, setNavOpen] = useState(false);
+
+  useEffect(() => {
+    setNavOpen(false);
+  }, [app.route]);
+
+  useEffect(() => {
+    const radius = app.settings?.window.radius ?? 12;
+    document.documentElement.style.setProperty('--window-radius', `${radius}px`);
+  }, [app.settings?.window.radius]);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const [settings, auth, books] = await Promise.all([api.getSettings(), api.getAuthState(), api.books().catch(() => [])]);
+        const [settings, auth, books, groups] = await Promise.all([
+          api.getSettings(),
+          api.getAuthState(),
+          api.books().catch(() => []),
+          api.groups().catch(() => []),
+        ]);
         if (!alive) return;
-        store.set({ settings, auth, books });
+        store.set({ settings, auth, books, groups });
         if (auth.loggedIn) {
           // Refresh the shelf in the background; the cached list is already rendered.
           api
             .syncShelf()
-            .then((list) => store.set({ books: list, online: true, shelfState: 'idle' }))
+            .then((list) => {
+              store.set({ books: list, online: true, shelfState: 'idle' });
+              // Folders are written by the same sync call, so refresh them once
+              // the shelf settles instead of issuing a second network round trip.
+              api.groups().then((next) => store.set({ groups: next })).catch(() => {});
+            })
             .catch(() => store.set({ online: false, shelfState: 'error' }));
         }
       } catch (e) {
@@ -173,7 +195,7 @@ export default function App() {
 
   if (!app.auth?.loggedIn) {
     return (
-      <div className="app-root" style={{ borderRadius: 0, border: 0 }}>
+      <div className="app-root" style={{ border: 0 }}>
         <TitleBar />
         <LoginView />
       </div>
@@ -183,8 +205,9 @@ export default function App() {
   const route = app.route;
 
   if (route.name === 'reader') {
+    const transparent = Boolean(app.settings?.disguise?.floating) || app.settings?.theme.background === 'transparent';
     return (
-      <div style={{ height: '100%', background: app.settings?.theme.background ?? '#f5f2ea' }}>
+      <div className="window-frame" style={{ background: transparent ? 'transparent' : app.settings?.theme.background ?? '#f5f2ea' }}>
         <ReaderView
           key={`${route.bookId}:${route.chapterUid}:${route.fromStart ? "start" : ""}`}
           bookId={route.bookId}
@@ -197,19 +220,21 @@ export default function App() {
 
   return (
     <div className="app-root">
-      <TitleBar />
-      <div className="shell">
-        <Sidebar />
+      <TitleBar onOpenNav={() => setNavOpen((v) => !v)} />
+      <div className={`shell${navOpen ? ' nav-open' : ''}`}>
+        <Sidebar onNavigate={() => setNavOpen(false)} />
         <div className="main">
           {route.name === 'shelf' ? <ShelfView /> : null}
           {route.name === 'search' ? <SearchView /> : null}
           {route.name === 'detail' ? <BookDetailView bookId={route.bookId} /> : null}
           {route.name === 'settings' ? <SettingsView /> : null}
           {route.name === 'stats' ? <StatsView /> : null}
+          {route.name === 'assistant' ? <AssistantView /> : null}
           {route.name === 'mp' ? <MPView /> : null}
         </div>
+        {navOpen ? <div className="nav-backdrop" onClick={() => setNavOpen(false)} /> : null}
       </div>
-      {app.toast ? <div className={`toast ${app.toast.kind}`}>{app.toast.text}</div> : null}
+      {app.toast ? <div key={app.toast.id} className={`toast ${app.toast.kind}`}>{app.toast.text}</div> : null}
     </div>
   );
 }
@@ -239,12 +264,12 @@ async function handleHotkey(name: string) {
       break;
     }
     case 'cycleSkin': {
-      const order = ['none', 'word', 'vscode'];
+      const order: string[] = SKIN_OPTIONS.map((s) => s.id);
       const current = store.get().window?.skin ?? settings.skin;
       const next = order[(order.indexOf(current) + 1) % order.length];
       const w = await api.setSkin(next);
       store.set({ window: w, settings: { ...store.get().settings!, skin: w.skin } });
-      toast(`皮肤：${next === 'none' ? '纯净' : next === 'word' ? 'Word' : 'VS Code'}`);
+      toast(`皮肤：${skinLabel(next)}`);
       break;
     }
     case 'clickThrough': {

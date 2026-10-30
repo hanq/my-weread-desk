@@ -7,7 +7,7 @@ import type { ReaderChromeProps } from '../views/ReaderView';
  * real reader controls so the user is never trapped in the disguise.
  */
 export function wordSkin(p: ReaderChromeProps) {
-  const pageLabel = `第 ${p.page + 1} 页，共 ${p.pages} 页`;
+  const pageLabel = p.mode === 'scroll' ? `滚动阅读 · ${p.percent.toFixed(0)}%` : `第 ${p.page + 1} 页，共 ${p.pages} 页`;
   return (
     <div className="skin-root word-skin" style={p.themeStyle}>
       <div className="word-titlebar">
@@ -97,23 +97,25 @@ export function wordSkin(p: ReaderChromeProps) {
       <div className="word-body">
         <div className="word-paper">
           {p.children}
-          <span className="word-page-badge">{p.page + 1}</span>
+          <span className="word-page-badge">{p.mode === 'scroll' ? '滚动' : p.page + 1}</span>
         </div>
       </div>
 
-      <div className="word-status">
-        <span>{pageLabel}</span>
-        <span>字数 {p.chapter.wordCount.toLocaleString('zh-CN')}</span>
-        <span className="spacer" />
-        <span>{p.chapter.title}</span>
-        <span className="zoom">
-          <Icon name="numbers" size={11} /> {p.percent.toFixed(0)}%
-        </span>
-        <span>中文(中国)</span>
-        <span>
-          <Icon name="sun" size={11} />
-        </span>
-      </div>
+      {p.showStatusBar ? (
+        <div className="word-status">
+          <span>{pageLabel}</span>
+          <span>字数 {p.chapter.wordCount.toLocaleString('zh-CN')}</span>
+          <span className="spacer" />
+          <span>{p.chapter.title}</span>
+          <span className="zoom">
+            <Icon name="numbers" size={11} /> {p.percent.toFixed(0)}%
+          </span>
+          <span>中文(中国)</span>
+          <span>
+            <Icon name="sun" size={11} />
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

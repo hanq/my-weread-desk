@@ -4,6 +4,7 @@ import { api } from '../api';
 import { Icon } from '../icons';
 import { store, toast, useApp } from '../store';
 import type { Settings, Theme } from '../types';
+import { SKIN_OPTIONS, avatarInitial, isChatSkin } from '../skins/registry';
 
 type Section = 'appearance' | 'reading' | 'disguise' | 'window' | 'hotkeys' | 'about';
 
@@ -24,6 +25,7 @@ export function SettingsView() {
   const [fonts, setFonts] = useState<string[]>([]);
   const [dataDir, setDataDir] = useState('');
   const [version, setVersion] = useState('');
+  const [screen, setScreen] = useState({ width: 0, height: 0 });
   const saveTimer = useRef<number>(0);
 
   useEffect(() => {
@@ -31,6 +33,7 @@ export function SettingsView() {
     void api.fontFamilies().then(setFonts).catch(() => undefined);
     void api.dataDir().then(setDataDir).catch(() => undefined);
     void api.appVersion().then(setVersion).catch(() => undefined);
+    void api.cursorPosition().then((p) => setScreen({ width: p.width, height: p.height })).catch(() => undefined);
   }, []);
 
   const persist = useMemo(
@@ -54,6 +57,85 @@ export function SettingsView() {
     persist({ ...settings, typing: { ...settings.typing, ...patch } });
   const updateWindow = (patch: Partial<Settings['window']>) =>
     persist({ ...settings, window: { ...settings.window, ...patch } });
+  const disguise = settings.disguise ?? {
+    taskbarIcon: true,
+    hideTaskbar: false,
+    contactName: '文件传输助手',
+    nickname: '我',
+    avatar: '',
+    sendOnEnter: true,
+    floating: false,
+    hoverReveal: false,
+    showZone: { x: 0, y: 120, w: 8, h: 180 },
+    hideZone: { x: 0, y: 420, w: 8, h: 180 },
+    migrated: true,
+  };
+  const updateDisguise = (patch: Partial<Settings['disguise']>) =>
+    persist({ ...settings, disguise: { ...disguise, ...patch } });
+  const selectSkin = (next: string) => {
+    const enableTyping = isChatSkin(next) && !settings.typing.enabled;
+    persist({
+      ...settings,
+      skin: next,
+      typing: { ...settings.typing, enabled: settings.typing.enabled || enableTyping },
+    });
+    void api.setSkin(next).then((w) => store.set({ window: w }));
+    if (enableTyping) {
+      void api.setTyping(true).then((w) => store.set({ window: w }));
+    }
+  };
+  const updateZone = (key: 'showZone' | 'hideZone', patch: Partial<Settings['disguise']['showZone']>) => {
+    updateDisguise({ [key]: { ...disguise[key], ...patch } } as Partial<Settings['disguise']>);
+  };
+  const pickZone = async (key: 'showZone' | 'hideZone') => {
+    try {
+      const pos = await api.cursorPosition();
+      updateZone(key, {
+        x: pos.x,
+        y: pos.y,
+        w: Math.max(8, disguise[key].w || 8),
+        h: Math.max(60, disguise[key].h || 180),
+      });
+      setScreen({ width: pos.width, height: pos.height });
+    } catch {
+      /* ignore */
+    }
+  };
+  const pickAvatar = async () => {
+    try {
+      const saved = await api.chooseAvatar();
+      // A nickname edit may have a debounced full-document save in flight; that
+      // snapshot predates the avatar and would clear it on the next tick.
+      window.clearTimeout(saveTimer.current);
+      store.set({ settings: saved });
+      toast('头像已更新');
+    } catch (e) {
+      toast(String((e as Error).message || e), 'error');
+    }
+  };
+  const clearAvatar = async () => {
+    try {
+      const saved = await api.clearAvatar();
+      window.clearTimeout(saveTimer.current);
+      store.set({ settings: saved });
+    } catch (e) {
+      toast(String((e as Error).message || e), 'error');
+    }
+  };
+  const setHoverReveal = (on: boolean) => {
+    if (!on) {
+      updateDisguise({ hoverReveal: false });
+      return;
+    }
+    const patch: Partial<Settings['disguise']> = { hoverReveal: true };
+    if (disguise.showZone.w === 0 && disguise.showZone.h === 0) {
+      patch.showZone = { x: 0, y: 120, w: 8, h: 180 };
+    }
+    if (disguise.hideZone.w === 0 && disguise.hideZone.h === 0) {
+      patch.hideZone = { x: 0, y: 420, w: 8, h: 180 };
+    }
+    updateDisguise(patch);
+  };
 
   return (
     <>
@@ -119,7 +201,7 @@ export function SettingsView() {
                 <Slider label="字距" hint="字间距（em）" value={settings.theme.letterSpacing} min={-0.02} max={0.2} step={0.01} onChange={(v) => updateTheme({ letterSpacing: v })} display={settings.theme.letterSpacing.toFixed(2)} />
                 <Slider label="段距" hint="段落后间距（px）" value={settings.theme.paragraphSpacing} min={0} max={40} step={1} onChange={(v) => updateTheme({ paragraphSpacing: v })} />
                 <Slider label="首行缩进" hint="以字符为单位" value={settings.theme.textIndent} min={0} max={4} step={1} onChange={(v) => updateTheme({ textIndent: v })} />
-                <Slider label="版心宽度" hint="0 表示自适应窗口" value={settings.theme.pageWidth} min={0} max={1200} step={20} onChange={(v) => updateTheme({ pageWidth: v })} display={settings.theme.pageWidth === 0 ? '自适应' : `${settings.theme.pageWidth}px`} />
+                <Slider label="版心宽度" hint="0 表示自适应；上下滚动时自动限制在约 920px" value={settings.theme.pageWidth} min={0} max={1200} step={20} onChange={(v) => updateTheme({ pageWidth: v })} display={settings.theme.pageWidth === 0 ? '自适应' : `${settings.theme.pageWidth}px`} />
                 <Slider label="页边距" hint="上下左右留白（px）" value={settings.theme.marginX} min={0} max={120} step={4} onChange={(v) => updateTheme({ marginX: v, marginY: Math.round(v * 0.8) })} />
                 <Row label="对齐方式" hint="两端对齐会调整字间距">
                   <div className="seg">
@@ -131,7 +213,7 @@ export function SettingsView() {
                     </button>
                   </div>
                 </Row>
-                <Row label="分栏" hint="双栏适合宽窗口">
+                <Row label="分栏" hint="双栏适合宽窗口；上下滚动固定单栏">
                   <div className="seg">
                     {[1, 2].map((n) => (
                       <button key={n} className={settings.theme.columns === n ? 'on' : ''} onClick={() => updateTheme({ columns: n })}>
@@ -140,7 +222,7 @@ export function SettingsView() {
                     ))}
                   </div>
                 </Row>
-                <Row label="行号" hint="在正文左侧显示连续行号">
+                <Row label="行号" hint="在正文左侧显示连续行号（仅左右翻页）">
                   <Toggle on={settings.theme.lineNumbers} onChange={(v) => updateTheme({ lineNumbers: v })} />
                 </Row>
               </section>
@@ -159,8 +241,46 @@ export function SettingsView() {
           {section === 'reading' ? (
             <section className="settings-section">
               <header>阅读行为</header>
-              <Row label="翻页动画" hint="关闭后翻页瞬时完成">
-                <Toggle on={settings.reader.pageTurnAnimation} onChange={(v) => updateReader({ pageTurnAnimation: v })} />
+              <Row label="翻页方式" hint="左右翻页或连续上下滚动">
+                <div className="seg">
+                  <button
+                    className={settings.reader.pageMode !== 'scroll' ? 'on' : ''}
+                    onClick={() => updateReader({ pageMode: 'page' })}
+                  >
+                    左右翻页
+                  </button>
+                  <button
+                    className={settings.reader.pageMode === 'scroll' ? 'on' : ''}
+                    onClick={() => updateReader({ pageMode: 'scroll' })}
+                  >
+                    上下滚动
+                  </button>
+                </div>
+              </Row>
+              <Row label="翻页效果" hint="仅左右翻页生效">
+                <select
+                  className="select"
+                  value={settings.reader.pageTurnEffect || 'slide'}
+                  onChange={(e) =>
+                    updateReader({ pageTurnEffect: e.target.value, pageTurnAnimation: e.target.value !== 'none' })
+                  }
+                >
+                  <option value="slide">滑动</option>
+                  <option value="fade">淡入</option>
+                  <option value="none">无动画</option>
+                </select>
+              </Row>
+              <Row label="滚轮翻页" hint="左右翻页模式下滚轮切换页码">
+                <Toggle on={settings.reader.wheelTurn !== false} onChange={(v) => updateReader({ wheelTurn: v })} />
+              </Row>
+              <Row label="点击两侧翻页" hint="点击正文左右边缘切换页码">
+                <Toggle on={settings.reader.clickTurn !== false} onChange={(v) => updateReader({ clickTurn: v })} />
+              </Row>
+              <Row label="显示滚动条" hint="仅上下滚动模式生效">
+                <Toggle on={settings.reader.showScrollbar !== false} onChange={(v) => updateReader({ showScrollbar: v })} />
+              </Row>
+              <Row label="平滑滚动" hint="滚动、定位与章节跳转使用平滑动画">
+                <Toggle on={settings.reader.smoothScroll !== false} onChange={(v) => updateReader({ smoothScroll: v })} />
               </Row>
               <Row label="自动隐藏工具栏" hint="鼠标停止后淡出顶栏与底栏">
                 <Toggle on={settings.reader.autoHideBars} onChange={(v) => updateReader({ autoHideBars: v })} />
@@ -192,23 +312,17 @@ export function SettingsView() {
               <section className="settings-section">
                 <header>皮肤</header>
                 <Row label="外观皮肤" hint="同一份正文，不同的外壳">
-                  <div className="seg">
-                    {(
-                      [
-                        ['none', '纯净'],
-                        ['word', 'Word'],
-                        ['vscode', 'VS Code'],
-                      ] as [string, string][]
-                    ).map(([k, label]) => (
+                  <div className="skin-choices">
+                    {SKIN_OPTIONS.map((option) => (
                       <button
-                        key={k}
-                        className={settings.skin === k ? 'on' : ''}
-                        onClick={() => {
-                          update({ skin: k });
-                          void api.setSkin(k).then((w) => store.set({ window: w }));
-                        }}
+                        key={option.id}
+                        className={settings.skin === option.id ? 'on' : ''}
+                        onClick={() => selectSkin(option.id)}
                       >
-                        {label}
+                        <b>{option.label}</b>
+                        <small>
+                          {option.kind === 'im' ? '聊天伪装' : option.kind === 'document' ? '文档伪装' : '原始界面'}
+                        </small>
                       </button>
                     ))}
                   </div>
@@ -221,6 +335,92 @@ export function SettingsView() {
                     onChange={(e) => update({ windowTitle: e.target.value })}
                     onBlur={(e) => void api.setWindowTitle(e.target.value)}
                   />
+                </Row>
+                <Row label="任务栏图标" hint="随皮肤切换任务栏与 Alt+Tab 图标">
+                  <Toggle on={disguise.taskbarIcon} onChange={(v) => updateDisguise({ taskbarIcon: v })} />
+                </Row>
+              </section>
+
+              <section className="settings-section">
+                <header>IM 聊天伪装</header>
+                <Row label="聊天对象" hint="微信 / 钉钉 / 飞书皮肤显示的会话名">
+                  <input
+                    className="input"
+                    style={{ width: 220 }}
+                    value={disguise.contactName}
+                    onChange={(e) => updateDisguise({ contactName: e.target.value })}
+                  />
+                </Row>
+                <Row label="我的昵称" hint="聊天资料卡与消息头像显示的名字">
+                  <input
+                    className="input"
+                    style={{ width: 220 }}
+                    maxLength={24}
+                    value={disguise.nickname}
+                    placeholder="我"
+                    onChange={(e) => updateDisguise({ nickname: e.target.value })}
+                  />
+                </Row>
+                <Row label="我的头像" hint="PNG / JPG / GIF / WebP，不超过 8MB">
+                  <div className="avatar-picker">
+                    <span className="avatar-preview">
+                      {disguise.avatar ? (
+                        <img src={`/avatar/${encodeURIComponent(disguise.avatar)}`} alt="头像预览" />
+                      ) : (
+                        avatarInitial(disguise.nickname)
+                      )}
+                    </span>
+                    <button className="btn" onClick={() => void pickAvatar()}>
+                      选择图片
+                    </button>
+                    {disguise.avatar ? (
+                      <button className="btn" onClick={() => void clearAvatar()}>
+                        恢复默认
+                      </button>
+                    ) : null}
+                  </div>
+                </Row>
+                <Row label="回车发送段落" hint="在聊天输入框按 Enter 发送当前段落">
+                  <Toggle on={disguise.sendOnEnter} onChange={(v) => updateDisguise({ sendOnEnter: v })} />
+                </Row>
+              </section>
+
+              <section className="settings-section">
+                <header>老板键与任务栏</header>
+                <Row label="老板键" hint={`${settings.hotkeys.panic || 'Ctrl+Alt+H'} 隐藏 / 恢复窗口`}>
+                  <button className="btn" onClick={() => void api.hideWindow()}>
+                    立即隐藏
+                  </button>
+                </Row>
+                <Row label="隐藏任务栏按钮" hint="窗口仍可用老板键或悬停区域恢复">
+                  <Toggle on={disguise.hideTaskbar} onChange={(v) => updateDisguise({ hideTaskbar: v })} />
+                </Row>
+              </section>
+
+              <section className="settings-section">
+                <header>悬浮透明窗口</header>
+                <Row label="透明无边距" hint="无边框、透明背景、正文贴边">
+                  <Toggle on={disguise.floating} onChange={(v) => updateDisguise({ floating: v })} />
+                </Row>
+                <Row label="悬停显示 / 隐藏" hint="进入显示区显示，进入隐藏区隐藏">
+                  <Toggle on={disguise.hoverReveal} onChange={setHoverReveal} />
+                </Row>
+                <ZoneEditor
+                  label="显示区域 A"
+                  zone={disguise.showZone}
+                  onChange={(patch) => updateZone('showZone', patch)}
+                  onPick={() => void pickZone('showZone')}
+                />
+                <ZoneEditor
+                  label="隐藏区域 B"
+                  zone={disguise.hideZone}
+                  onChange={(patch) => updateZone('hideZone', patch)}
+                  onPick={() => void pickZone('hideZone')}
+                />
+                <Row label="屏幕" hint="坐标为物理像素；可用“取光标”直接拾取">
+                  <span className="faint" style={{ fontSize: 12 }}>
+                    {screen.width > 0 ? `${screen.width} × ${screen.height}` : '—'}
+                  </span>
                 </Row>
               </section>
 
@@ -300,6 +500,19 @@ export function SettingsView() {
                 }}
                 display={`${Math.round(settings.window.opacity * 100)}%`}
               />
+              <Slider
+                label="窗体圆角"
+                hint="窗口四角弧度；0 为直角，越大越圆，可与背景窗口融合"
+                value={settings.window.radius}
+                min={0}
+                max={40}
+                step={1}
+                onChange={(v) => {
+                  updateWindow({ radius: v });
+                  void api.setWindowRadius(v);
+                }}
+                display={`${settings.window.radius}px`}
+              />
               <Row label="快捷键" hint="全局快捷键修改后需要重新注册">
                 <button className="btn" onClick={() => void api.registerHotkeys().then(() => toast('已重新注册全局快捷键', 'success')).catch((e: unknown) => toast(String((e as Error).message || e), 'error'))}>
                   重新注册
@@ -314,7 +527,7 @@ export function SettingsView() {
               <div className="setting-row">
                 <div className="label">
                   <b>翻页</b>
-                  <small>阅读器获得焦点时生效</small>
+                  <small>左右翻页 ←/→ 翻页；上下滚动 ↑/↓ 滚动、←/→ 切章</small>
                 </div>
                 <div className="control">
                   <span className="kbd">←</span>
@@ -528,8 +741,48 @@ function hotkeyHint(name: string): string {
     toggleTop: '窗口未聚焦时也能切换',
     typing: '任意按键逐字显示',
     panic: '立刻隐藏窗口',
-    cycleSkin: '纯净 → Word → VS Code',
+    cycleSkin: '纯净 → Word → VS Code → 微信 → 钉钉 → 飞书',
     clickThrough: '点击穿透到下层窗口',
   };
   return map[name] ?? '';
+}
+
+function ZoneEditor({
+  label,
+  zone,
+  onChange,
+  onPick,
+}: {
+  label: string;
+  zone: { x: number; y: number; w: number; h: number };
+  onChange: (patch: Partial<{ x: number; y: number; w: number; h: number }>) => void;
+  onPick: () => void;
+}) {
+  const fields: Array<['x' | 'y' | 'w' | 'h', string]> = [
+    ['x', 'X'],
+    ['y', 'Y'],
+    ['w', 'W'],
+    ['h', 'H'],
+  ];
+  return (
+    <div className="zone-editor">
+      <span className="zone-label">{label}</span>
+      {fields.map(([key, text]) => (
+        <label key={key}>
+          <span>{text}</span>
+          <input
+            className="input"
+            type="number"
+            value={zone[key]}
+            onChange={(e) =>
+              onChange({ [key]: Number(e.target.value) } as Partial<{ x: number; y: number; w: number; h: number }>)
+            }
+          />
+        </label>
+      ))}
+      <button className="btn btn-ghost" onClick={onPick}>
+        取光标
+      </button>
+    </div>
+  );
 }

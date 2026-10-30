@@ -1,0 +1,465 @@
+/* IM disguise shells (WeChat / DingTalk / Feishu) and the disguise skin cards.
+ * The reader is the same Block model; only the chrome and message bubbles are
+ * swapped, so typing mode and progress reporting keep working. */
+
+/* ---------------------------------------------------------------- settings */
+
+.skin-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.skin-choices button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 84px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--chrome-line);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.skin-choices button b {
+  font-size: 13px;
+  font-weight: 600;
+}
+.skin-choices button small {
+  font-size: 10.5px;
+  color: var(--ink-dim);
+}
+.skin-choices button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.skin-choices button.on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.skin-choices button.on small {
+  color: #9dbcff;
+}
+
+/* IM avatar picker in the disguise settings. */
+.avatar-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.avatar-preview {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--im-accent, #07c160);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+.avatar-preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+/* ---------------------------------------------------------------- shell */
+
+.chat-skin {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--im-bg);
+  color: #1a1a1a;
+  font-family: var(--font-ui);
+}
+
+.chat-titlebar {
+  position: relative;
+  z-index: 4;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 38px;
+  padding: 0 8px 0 14px;
+  background: var(--im-header);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  --wails-draggable: drag;
+}
+.chat-titlebar .chat-brand {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #3a3a3a;
+}
+.chat-titlebar .chat-title-spacer {
+  flex: 1;
+}
+.chat-titlebar .icon-btn {
+  width: 28px;
+  height: 28px;
+  color: #555;
+  --wails-draggable: no-drag;
+}
+.chat-titlebar .icon-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #222;
+}
+.chat-titlebar .icon-btn.active {
+  color: var(--im-accent);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.chat-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* ---------------------------------------------------------------- sidebar */
+
+.chat-side {
+  width: 212px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+  background: var(--im-side);
+  border-right: 1px solid rgba(0, 0, 0, 0.07);
+  overflow: hidden;
+}
+.chat-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin: 0 10px 8px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.05);
+  color: #8a8f96;
+  font-size: 12px;
+}
+.chat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: default;
+}
+.chat-item.active {
+  background: rgba(0, 0, 0, 0.07);
+}
+.chat-avatar {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: #d8dde4;
+  color: #556070;
+  font-size: 13px;
+  font-weight: 600;
+}
+.chat-avatar.me {
+  background: var(--im-accent);
+  color: #fff;
+}
+.chat-avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  border-radius: inherit;
+}
+.chat-side-me {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 4px;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+}
+.chat-side-me-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.chat-side-me-text b {
+  font-size: 12.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-side-me-text small {
+  font-size: 11px;
+  color: #9aa0a6;
+}
+.chat-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.chat-item-text b {
+  font-size: 12.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-item-text small {
+  font-size: 11px;
+  color: #9aa0a6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- chat */
+
+.chat-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--im-bg);
+}
+.chat-head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  height: 52px;
+  padding: 0 18px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--im-header);
+}
+.chat-head b {
+  font-size: 14px;
+  font-weight: 600;
+}
+.chat-head-sub {
+  font-size: 11px;
+  color: #9aa0a6;
+}
+.chat-head-pct {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: #8a8f96;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-transcript {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 8px;
+}
+.chat-transcript::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+}
+.chat-day {
+  text-align: center;
+  font-size: 11px;
+  color: #9aa0a6;
+  margin: 2px 0 12px;
+}
+.chat-system {
+  text-align: center;
+  font-size: 11px;
+  color: #8a9098;
+  margin: 12px 0;
+  word-break: break-word;
+}
+.chat-divider {
+  height: 1px;
+  margin: 14px 40px;
+  background: rgba(0, 0, 0, 0.06);
+}
+.chat-chapter {
+  text-align: center;
+  font-size: 11px;
+  color: #9aa0a6;
+  margin: 18px 0 10px;
+  letter-spacing: 0.04em;
+}
+.chat-msg {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.chat-msg .chat-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  font-size: 12px;
+  background: var(--im-accent);
+  color: #fff;
+}
+.chat-msg-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 74%;
+  min-width: 0;
+}
+.chat-bubble {
+  position: relative;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border-top-right-radius: 2px;
+  background: var(--im-bubble);
+  color: #1b1b1b;
+  font-size: 13.5px;
+  line-height: 1.65;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+  word-break: break-word;
+}
+.chat-bubble .blk {
+  margin: 0;
+  text-indent: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.chat-bubble .blk + .blk {
+  margin-top: 6px;
+}
+.chat-bubble .blk.heading {
+  font-size: 1.05em;
+}
+.chat-bubble .blk.image img {
+  max-height: 220px;
+  border-radius: 6px;
+  display: block;
+}
+.chat-bubble .tw-caret {
+  background: var(--im-accent);
+}
+.chat-time {
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: #a0a5ab;
+}
+
+.chat-compose {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+  background: var(--im-header);
+}
+.chat-compose-tools {
+  display: flex;
+  gap: 8px;
+  color: #8a9098;
+}
+.chat-draft {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: #fff;
+  color: #333;
+  font-size: 12.5px;
+  outline: none;
+}
+.chat-draft::placeholder {
+  color: #aaa;
+}
+.chat-send {
+  flex: none;
+  height: 30px;
+  padding: 0 18px;
+  border-radius: 6px;
+  background: var(--im-accent);
+  color: #fff;
+  font-size: 12.5px;
+}
+.chat-send:hover {
+  filter: brightness(1.06);
+}
+.chat-next {
+  display: block;
+  margin: 16px auto 10px;
+  padding: 6px 14px;
+  border-radius: 99px;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  background: rgba(0, 0, 0, 0.05);
+  color: #6f757c;
+  font-size: 12px;
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
+.chat-next:hover {
+  background: rgba(0, 0, 0, 0.09);
+  color: #333;
+}
+
+@media (max-width: 760px) {
+  .chat-side {
+    display: none;
+  }
+}
+
+/* Floating, borderless reading surface. */
+.reader.floating {
+  background: transparent;
+}
+.reader.floating .reader-stage {
+  padding: 0 !important;
+}
+.reader.floating .paper {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+/* Hover-zone editor in the disguise settings. */
+.zone-editor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.zone-editor .zone-label {
+  width: 72px;
+  flex: none;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+.zone-editor label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.zone-editor label .input {
+  width: 58px;
+  padding: 4px 6px;
+  font-size: 11.5px;
+}
+.zone-editor .btn {
+  padding: 4px 8px;
+  font-size: 11.5px;
+}

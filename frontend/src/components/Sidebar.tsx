@@ -3,17 +3,23 @@ import { Icon } from '../icons';
 import { navigate, store, toast, useApp } from '../store';
 import type { Route } from '../store';
 
-const NAV: { key: Route['name']; label: string; icon: 'book' | 'search' | 'chart' | 'settings' | 'at' }[] = [
+const NAV: { key: Route['name']; label: string; icon: 'book' | 'search' | 'chart' | 'settings' | 'at' | 'sparkle' }[] = [
   { key: 'shelf', label: '书架', icon: 'book' },
   { key: 'search', label: '搜索', icon: 'search' },
   { key: 'mp', label: '公众号', icon: 'at' },
+  { key: 'assistant', label: '助手', icon: 'sparkle' },
   { key: 'stats', label: '统计', icon: 'chart' },
   { key: 'settings', label: '设置', icon: 'settings' },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const app = useApp();
   const route = app.route;
+
+  const go = (name: Route['name']) => {
+    onNavigate?.();
+    navigate({ name } as Route);
+  };
 
   const sync = () => {
     store.set({ shelfState: 'loading' });
@@ -34,11 +40,12 @@ export function Sidebar() {
   return (
     <nav className="sidebar">
       <div className="group-label">阅读</div>
-      {NAV.slice(0, 3).map((item) => (
+      {NAV.slice(0, 4).map((item) => (
         <button
           key={item.key}
           className={`nav-item${route.name === item.key || (item.key === 'shelf' && route.name === 'detail') || (item.key === 'shelf' && route.name === 'reader') ? ' on' : ''}`}
-          onClick={() => navigate({ name: item.key } as Route)}
+          onClick={() => go(item.key)}
+          title={item.label}
         >
           <Icon name={item.icon} size={16} />
           <span className="grow">{item.label}</span>
@@ -47,11 +54,12 @@ export function Sidebar() {
       ))}
 
       <div className="group-label">分析与设置</div>
-      {NAV.slice(3).map((item) => (
+      {NAV.slice(4).map((item) => (
         <button
           key={item.key}
           className={`nav-item${route.name === item.key ? ' on' : ''}`}
-          onClick={() => navigate({ name: item.key } as Route)}
+          onClick={() => go(item.key)}
+          title={item.label}
         >
           <Icon name={item.icon} size={16} />
           <span className="grow">{item.label}</span>

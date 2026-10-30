@@ -2,7 +2,7 @@ import { api } from '../api';
 import { Icon } from '../icons';
 import { navigate, store, useApp } from '../store';
 
-export function TitleBar() {
+export function TitleBar({ onOpenNav }: { onOpenNav?: () => void }) {
   const app = useApp();
   const win = app.window;
   const pinned = win?.alwaysOnTop ?? false;
@@ -13,8 +13,13 @@ export function TitleBar() {
 
   return (
     <div className="titlebar">
+      {onOpenNav ? (
+        <button className="icon-btn nav-toggle" onClick={onOpenNav} title="菜单" aria-label="菜单">
+          <Icon name="list" size={15} />
+        </button>
+      ) : null}
       <button className="brand" onClick={() => navigate({ name: 'shelf' })} style={{ cursor: 'pointer' }}>
-        <span className="dot" />
+        <span className={`dot${app.shelfState === 'loading' ? ' syncing' : ''}`} />
         <span>MY WEREAD</span>
       </button>
       {app.online ? null : <span className="offline-badge">离线</span>}

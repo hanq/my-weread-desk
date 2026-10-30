@@ -91,7 +91,7 @@ export function vsCodeSkin(p: ReaderChromeProps) {
             <Icon name="chevronRight" size={10} />
             <span className="truncate">{p.chapter.title}</span>
             <Icon name="chevronRight" size={10} />
-            <span className="cur">Ln {Math.max(1, (p.page + 1) * 24)}</span>
+            <span className="cur">{p.mode === 'scroll' ? 'Scroll' : `Ln ${Math.max(1, (p.page + 1) * 24)}`}</span>
           </div>
           <div className="vs-editor-area">
             {p.children}
@@ -101,19 +101,23 @@ export function vsCodeSkin(p: ReaderChromeProps) {
               ))}
             </div>
           </div>
-          <div className="vs-status">
-            <span>⎇ main*</span>
-            <span>0 ⊗ 0 ⚠</span>
-            <span className="spacer" />
-            <span>Ln {Math.max(1, (p.page + 1) * 24)}, Col 1</span>
-            <span>Spaces: 4</span>
-            <span>UTF-8</span>
-            <span>{language}</span>
-            <span>
-              {p.page + 1}/{p.pages}
-            </span>
-            <span>{p.percent.toFixed(0)}%</span>
-          </div>
+          {p.showStatusBar ? (
+            <div className="vs-status">
+              <span>⎇ main*</span>
+              <span>0 ⊗ 0 ⚠</span>
+              <span className="spacer" />
+              {p.mode === 'scroll' ? <span>Scroll</span> : <span>Ln {Math.max(1, (p.page + 1) * 24)}, Col 1</span>}
+              <span>Spaces: 4</span>
+              <span>UTF-8</span>
+              <span>{language}</span>
+              {p.mode === 'page' ? (
+                <span>
+                  {p.page + 1}/{p.pages}
+                </span>
+              ) : null}
+              <span>{p.percent.toFixed(0)}%</span>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

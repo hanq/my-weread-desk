@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/wailsapp/wails/v2"
@@ -37,7 +38,7 @@ func main() {
 		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets:     assets,
-			Middleware: mediaMiddleware(store),
+			Middleware: assetserver.ChainMiddleware(mediaMiddleware(store), imageProxyMiddleware(application), avatarMiddleware(application)),
 		},
 		// Opaque by default: the transparent background is switched on at runtime
 		// only when the theme or the opacity slider requires it.
@@ -117,6 +118,58 @@ func mediaMiddleware(store *library.Store) assetserver.Middleware {
 				return
 			}
 			data, mime, err := store.Media(bookID, name)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", mime)
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			_, _ = w.Write(data)
+		})
+	}
+}
+
+// avatarMiddleware serves the IM disguise avatar from the data directory. The
+// renderer never receives the absolute path, so the stored setting can move
+// between machines and the file stays out of the asset bundle.
+func avatarMiddleware(application *app.App) assetserver.Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			const prefix = "/avatar/"
+			if !strings.HasPrefix(r.URL.Path, prefix) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			name, err := url.PathUnescape(strings.TrimPrefix(r.URL.Path, prefix))
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			data, mime, err := app.AvatarFile(application, name)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", mime)
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			_, _ = w.Write(data)
+		})
+	}
+}
+
+// imageProxyMiddleware fetches an original WeRead image through the Go web
+// session when the chapter tar could not provide it. The renderer has no
+// WeRead cookies, so it cannot load res.weread.qq.com directly.
+func imageProxyMiddleware(application *app.App) assetserver.Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/media-proxy" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			q := r.URL.Query()
+			uid, _ := strconv.ParseInt(q.Get("uid"), 10, 64)
+			data, mime, err := app.ProxyImage(r.Context(), application, q.Get("book"), uid, q.Get("src"))
 			if err != nil {
 				http.NotFound(w, r)
 				return

@@ -3,9 +3,9 @@
 // so running the frontend in a plain browser fails with one clear message.
 
 import type {
-  AuthState, Book, BookDetail, Chapter, DownloadState, LoginPoll, MPArticle,
-  Note, Position, Progress, QRCode, ReadStats, ReaderSession, SearchResult,
-  Settings, Theme, WindowState,
+  AuthState, Book, BookDetail, Chapter, CursorInfo, DeviceReadStats, DownloadState, LoginPoll, MPArticle,
+  AISource, Note, Position, Progress, QRCode, RAGStatus, ReadStats, ReaderSession,
+  SearchResult, Settings, ShelfGroup, Theme, WindowState,
 } from './types';
 
 type AnyFn = (...args: unknown[]) => Promise<unknown>;
@@ -40,11 +40,14 @@ export const api = {
   fontFamilies: () => call<string[]>('FontFamilies'),
   dataDir: () => call<string>('DataDir'),
   openDataDir: () => call<void>('OpenDataDir'),
+  chooseAvatar: () => call<Settings>('ChooseAvatar'),
+  clearAvatar: () => call<Settings>('ClearAvatar'),
   appVersion: () => call<string>('AppVersion'),
 
   getWindowState: () => call<WindowState>('GetWindowState'),
   setAlwaysOnTop: (on: boolean) => call<WindowState>('SetAlwaysOnTop', on),
   setOpacity: (alpha: number) => call<WindowState>('SetOpacity', alpha),
+  setWindowRadius: (radius: number) => call<void>('SetWindowRadius', radius),
   setClickThrough: (on: boolean) => call<WindowState>('SetClickThrough', on),
   setWindowTitle: (title: string) => call<void>('SetWindowTitle', title),
   setZen: (on: boolean) => call<WindowState>('SetZen', on),
@@ -67,6 +70,18 @@ export const api = {
   // library
   books: () => call<Book[]>('Books'),
   syncShelf: () => call<Book[]>('SyncShelf'),
+  groups: () => call<ShelfGroup[]>('Groups'),
+  createGroup: (name: string) => call<ShelfGroup>('CreateGroup', name),
+  renameGroup: (groupId: string, name: string) => call<void>('RenameGroup', groupId, name),
+  deleteGroup: (groupId: string) => call<void>('DeleteGroup', groupId),
+  setBookGroup: (bookIds: string[], groupId: string) => call<void>('SetBookGroup', bookIds, groupId),
+
+  // retrieval assistant
+  ragStatus: (bookId: string) => call<RAGStatus>('RAGStatus', bookId),
+  indexBook: (bookId: string) => call<RAGStatus>('IndexBook', bookId),
+  dropRagIndex: (bookId: string) => call<void>('DropRAGIndex', bookId),
+  askBook: (bookId: string, question: string) => call<string>('AskBook', bookId, question),
+  cancelAsk: (requestId: string) => call<void>('CancelAsk', requestId),
   search: (keyword: string, scope: string, page: number) =>
     call<SearchResult>('Search', keyword, scope, page),
   bookDetail: (bookId: string) => call<BookDetail>('BookDetail', bookId),
@@ -75,6 +90,7 @@ export const api = {
     call<void>('MutateShelf', { bookId, action }),
   notes: (bookId: string) => call<Note[]>('Notes', bookId),
   stats: (mode: string, baseTime: number) => call<ReadStats>('Stats', mode, baseTime),
+  deviceStats: () => call<DeviceReadStats>('DeviceStats'),
   mpArticles: (accountId: string, offset: number) =>
     call<MPArticle[]>('MPArticles', accountId, offset),
   openMPArticle: (reviewId: string) => call<any>('OpenMPArticle', reviewId),
@@ -90,6 +106,7 @@ export const api = {
   syncProgress: (bookId: string) => call<Progress>('SyncProgress', bookId),
   reportNow: (bookId: string) => call<void>('ReportNow', bookId),
   touchReader: () => call<void>('TouchReader'),
+  cursorPosition: () => call<CursorInfo>('CursorPosition'),
 
   // downloads
   startDownload: (bookId: string) => call<DownloadState>('StartDownload', bookId),

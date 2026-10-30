@@ -51,6 +51,7 @@ type WindowSettings struct {
 	Maximised    bool    `json:"maximised"`
 	HideOnBlur   bool    `json:"hideOnBlur"`
 	Remembered   bool    `json:"remembered"`
+	Radius       int     `json:"radius"`
 }
 
 // TypingSettings drives the "typing camouflage" mode.
@@ -66,14 +67,63 @@ type TypingSettings struct {
 
 // ReaderSettings holds behaviour toggles that are not purely visual.
 type ReaderSettings struct {
-	PageTurnAnimation bool `json:"pageTurnAnimation"`
-	AutoHideBars      bool `json:"autoHideBars"`
-	ShowStatusBar     bool `json:"showStatusBar"`
-	ReportProgress    bool `json:"reportProgress"`
-	ReportReadTime    bool `json:"reportReadTime"`
-	ReportInterval    int  `json:"reportInterval"`
-	ConfirmExit       bool `json:"confirmExit"`
-	PrefetchNext      bool `json:"prefetchNext"`
+	PageTurnAnimation bool   `json:"pageTurnAnimation"`
+	PageMode          string `json:"pageMode"`
+	PageTurnEffect    string `json:"pageTurnEffect"`
+	WheelTurn         bool   `json:"wheelTurn"`
+	ClickTurn         bool   `json:"clickTurn"`
+	ShowScrollbar     bool   `json:"showScrollbar"`
+	SmoothScroll      bool   `json:"smoothScroll"`
+	AutoHideBars      bool   `json:"autoHideBars"`
+	ShowStatusBar     bool   `json:"showStatusBar"`
+	ReportProgress    bool   `json:"reportProgress"`
+	ReportReadTime    bool   `json:"reportReadTime"`
+	ReportInterval    int    `json:"reportInterval"`
+	ConfirmExit       bool   `json:"confirmExit"`
+	PrefetchNext      bool   `json:"prefetchNext"`
+}
+
+// Zone is an absolute screen rectangle used by the hover-reveal watcher.
+type Zone struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+	W int `json:"w"`
+	H int `json:"h"`
+}
+
+// DisguiseSettings controls the camouflage layer: the taskbar icon, the fake
+// chat identity and the boss-key / hover-reveal window behaviour.
+type DisguiseSettings struct {
+	TaskbarIcon bool   `json:"taskbarIcon"`
+	HideTaskbar bool   `json:"hideTaskbar"`
+	ContactName string `json:"contactName"`
+	// Nickname and Avatar are the IM identity of the reader. Avatar stores the
+	// file name inside the data directory's avatar folder, not an absolute
+	// path, so moving the profile between machines keeps working.
+	Nickname    string `json:"nickname"`
+	Avatar      string `json:"avatar"`
+	SendOnEnter bool   `json:"sendOnEnter"`
+	Floating    bool   `json:"floating"`
+	HoverReveal bool   `json:"hoverReveal"`
+	ShowZone    Zone   `json:"showZone"`
+	HideZone    Zone   `json:"hideZone"`
+	Migrated    bool   `json:"migrated"`
+}
+
+// AISettings configures the retrieval assistant. The API key lives in the same
+// local settings file as everything else and is never sent anywhere except the
+// endpoint the user configured.
+type AISettings struct {
+	Enabled     bool    `json:"enabled"`
+	BaseURL     string  `json:"baseUrl"`
+	APIKey      string  `json:"apiKey"`
+	Model       string  `json:"model"`
+	Temperature float64 `json:"temperature"`
+	MaxTokens   int     `json:"maxTokens"`
+	// Consent records that the user agreed to send retrieved passages to the
+	// configured provider. Book text is copyrighted, so enabling the assistant
+	// without it would be a silent disclosure.
+	Consent bool `json:"consent"`
 }
 
 // Settings is the whole persisted configuration.
@@ -86,6 +136,8 @@ type Settings struct {
 	Typing        TypingSettings    `json:"typing"`
 	Window        WindowSettings    `json:"window"`
 	Reader        ReaderSettings    `json:"reader"`
+	AI            AISettings        `json:"ai"`
+	Disguise      DisguiseSettings  `json:"disguise"`
 	Hotkeys       map[string]string `json:"hotkeys"`
 	WindowTitle   string            `json:"windowTitle"`
 	HideTray      bool              `json:"hideTray"`
@@ -94,12 +146,22 @@ type Settings struct {
 	LastBookID    string            `json:"lastBookId"`
 }
 
+// legacyFallbackFonts is the pre-migration serif chain. It named fonts that
+// are absent on Windows, so stored settings that still carry it are upgraded to
+// DefaultTheme's chain instead of silently rendering in SimSun.
+const legacyFallbackFonts = "Songti SC, SimSun, serif"
+
 // DefaultTheme is the "paper" reading theme.
+//
+// Source Han Serif is not installed by default on Windows and "Songti SC" is
+// macOS-only, so the fallback chain names Noto Serif SC (the same typeface
+// family as Source Han Serif) before SimSun; without it the paper theme
+// silently rendered Chinese in SimSun.
 func DefaultTheme() Theme {
 	return Theme{
 		Name:             "纸白",
 		FontFamily:       "Source Han Serif SC",
-		FallbackFonts:    "Songti SC, SimSun, serif",
+		FallbackFonts:    "Noto Serif SC, Songti SC, SimSun, serif",
 		FontSize:         19,
 		LineHeight:       1.85,
 		LetterSpacing:    0.02,
@@ -110,15 +172,19 @@ func DefaultTheme() Theme {
 		Surface:          "#fffdf8",
 		SurfaceOpacity:   1,
 		TextAlign:        "justify",
-		PageWidth:        720,
-		MarginX:          56,
-		MarginY:          44,
-		LineNumbers:      false,
-		Columns:          1,
-		HeadingColor:     "#1d1d1d",
-		AccentColor:      "#2f6fed",
-		SelectionColor:   "rgba(47,111,237,0.22)",
-		ParagraphStyle:   "indent",
+		// 0 means "use the whole measure": the paper then fills the stage and
+		// only the small stage margins remain around the text.
+		// 0 means automatic: one column on narrow windows, two once the text
+		// area is wide enough. A fixed page width keeps the manual choice.
+		PageWidth:      0,
+		MarginX:        12,
+		MarginY:        12,
+		LineNumbers:    false,
+		Columns:        0,
+		HeadingColor:   "#1d1d1d",
+		AccentColor:    "#2f6fed",
+		SelectionColor: "rgba(47,111,237,0.22)",
+		ParagraphStyle: "indent",
 	}
 }
 
@@ -160,8 +226,8 @@ func PresetThemes() []Theme {
 	clear.HeadingColor = "#ffffff"
 	clear.AccentColor = "#8ab4ff"
 	clear.PageWidth = 0
-	clear.MarginX = 28
-	clear.MarginY = 20
+	clear.MarginX = 12
+	clear.MarginY = 12
 
 	mono := paper
 	mono.Name = "等宽"
@@ -186,7 +252,7 @@ func PresetThemes() []Theme {
 // Defaults returns a complete default settings document.
 func Defaults() *Settings {
 	return &Settings{
-		Version:      1,
+		Version:      4,
 		Theme:        DefaultTheme(),
 		CustomThemes: []Theme{},
 		Skin:         "none",
@@ -207,9 +273,16 @@ func Defaults() *Settings {
 			Frameless:   false,
 			Remembered:  false,
 			AlwaysOnTop: false,
+			Radius:      12,
 		},
 		Reader: ReaderSettings{
 			PageTurnAnimation: true,
+			PageMode:          "page",
+			PageTurnEffect:    "slide",
+			WheelTurn:         true,
+			ClickTurn:         true,
+			ShowScrollbar:     true,
+			SmoothScroll:      true,
 			AutoHideBars:      true,
 			ShowStatusBar:     true,
 			ReportProgress:    true,
@@ -217,6 +290,20 @@ func Defaults() *Settings {
 			ReportInterval:    30,
 			ConfirmExit:       false,
 			PrefetchNext:      true,
+		},
+		AI: AISettings{
+			Enabled:     false,
+			Temperature: 0.3,
+			MaxTokens:   1200,
+		},
+		Disguise: DisguiseSettings{
+			TaskbarIcon: true,
+			ContactName: "文件传输助手",
+			Nickname:    "我",
+			SendOnEnter: true,
+			ShowZone:    Zone{X: 0, Y: 120, W: 8, H: 180},
+			HideZone:    Zone{X: 0, Y: 420, W: 8, H: 180},
+			Migrated:    true,
 		},
 		Hotkeys: map[string]string{
 			"zen":          "Ctrl+Alt+Z",
@@ -226,7 +313,7 @@ func Defaults() *Settings {
 			"cycleSkin":    "Ctrl+Alt+M",
 			"clickThrough": "Ctrl+Alt+C",
 		},
-		WindowTitle: "Document1 - Word",
+		WindowTitle: "",
 		CloseToTray: true,
 	}
 }
@@ -269,7 +356,8 @@ func NewStore(dataDir string) (*Store, error) {
 // mergeDefaults fills any zero-valued field a newer build introduced.
 func mergeDefaults(in *Settings) *Settings {
 	def := Defaults()
-	if in.Version == 0 {
+	oldVersion := in.Version
+	if in.Version < def.Version {
 		in.Version = def.Version
 	}
 	if in.Theme.FontSize == 0 {
@@ -290,11 +378,66 @@ func mergeDefaults(in *Settings) *Settings {
 	if in.Theme.LineHeight == 0 {
 		in.Theme.LineHeight = def.Theme.LineHeight
 	}
+	if in.Theme.FallbackFonts == "" || in.Theme.FallbackFonts == legacyFallbackFonts {
+		in.Theme.FallbackFonts = def.Theme.FallbackFonts
+	}
+	if in.Theme.PageWidth == 720 && in.Theme.MarginX == 56 && in.Theme.MarginY == 44 {
+		// Legacy paper layout: a fixed 720px measure inside 56/44 margins left a
+		// wide empty frame on desktop windows. Move that exact signature to the
+		// edge-to-edge layout; a deliberately customised measure is left alone.
+		in.Theme.PageWidth = def.Theme.PageWidth
+		in.Theme.MarginX = def.Theme.MarginX
+		in.Theme.MarginY = def.Theme.MarginY
+	}
+	if !in.Disguise.Migrated {
+		// Settings written before the disguise category existed have no
+		// disguise block; the zero value would silently disable the taskbar icon.
+		in.Disguise = def.Disguise
+	}
+	if in.Disguise.Nickname == "" {
+		in.Disguise.Nickname = def.Disguise.Nickname
+	}
+	if in.Disguise.ShowZone.W == 0 && in.Disguise.ShowZone.H == 0 {
+		in.Disguise.ShowZone = def.Disguise.ShowZone
+	}
+	if in.Disguise.HideZone.W == 0 && in.Disguise.HideZone.H == 0 {
+		in.Disguise.HideZone = def.Disguise.HideZone
+	}
 	if in.Theme.ParagraphStyle == "" {
 		in.Theme.ParagraphStyle = def.Theme.ParagraphStyle
 	}
 	if in.Reader.ReportInterval <= 0 {
 		in.Reader.ReportInterval = def.Reader.ReportInterval
+	}
+	if in.Reader.PageMode == "" {
+		in.Reader.PageMode = def.Reader.PageMode
+	}
+	switch in.Reader.PageMode {
+	case "page", "scroll":
+	default:
+		in.Reader.PageMode = def.Reader.PageMode
+	}
+	if in.Reader.PageTurnEffect == "" {
+		in.Reader.PageTurnEffect = def.Reader.PageTurnEffect
+	}
+	switch in.Reader.PageTurnEffect {
+	case "slide", "fade", "none":
+	default:
+		in.Reader.PageTurnEffect = def.Reader.PageTurnEffect
+	}
+	if oldVersion < 3 {
+		// These booleans did not exist before the page-mode release. Their zero
+		// value would silently turn the new controls off, so seed them once.
+		in.Reader.WheelTurn = def.Reader.WheelTurn
+		in.Reader.ClickTurn = def.Reader.ClickTurn
+		in.Reader.ShowScrollbar = def.Reader.ShowScrollbar
+		in.Reader.SmoothScroll = def.Reader.SmoothScroll
+	}
+	if oldVersion < 4 && in.Theme.Columns == 1 {
+		// Version 3 always stored a fixed column count, and 1 was the default.
+		// The new default is automatic (0), so old documents opt into the
+		// wide-window two-column layout; an explicit 2 is kept.
+		in.Theme.Columns = 0
 	}
 	if in.Window.W <= 200 {
 		in.Window.W = def.Window.W
@@ -304,6 +447,10 @@ func mergeDefaults(in *Settings) *Settings {
 	}
 	if in.Window.Opacity <= 0 {
 		in.Window.Opacity = 1
+	}
+	if oldVersion < 2 && in.Window.Radius == 0 {
+		// Settings written before the radius field existed get the old 12px look.
+		in.Window.Radius = def.Window.Radius
 	}
 	if in.Hotkeys == nil || len(in.Hotkeys) == 0 {
 		in.Hotkeys = def.Hotkeys

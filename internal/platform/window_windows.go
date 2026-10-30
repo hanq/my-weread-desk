@@ -7,6 +7,7 @@ package platform
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -41,6 +42,15 @@ var (
 	procGetWindowRect          = user32.NewProc("GetWindowRect")
 	procGetClassName           = user32.NewProc("GetClassNameW")
 	procIsIconic               = user32.NewProc("IsIconic")
+	procLoadImageW             = user32.NewProc("LoadImageW")
+	procSendMessageW           = user32.NewProc("SendMessageW")
+	procDestroyIcon            = user32.NewProc("DestroyIcon")
+	procGetCursorPos           = user32.NewProc("GetCursorPos")
+	procGetSystemMetrics       = user32.NewProc("GetSystemMetrics")
+	procShowWindow             = user32.NewProc("ShowWindow")
+	procSetWindowRgn           = user32.NewProc("SetWindowRgn")
+	procGetDpiForWindow        = user32.NewProc("GetDpiForWindow")
+	procCreateRoundRectRgn     = gdi32.NewProc("CreateRoundRectRgn")
 	procEnumDisplayMonitors    = user32.NewProc("EnumDisplayMonitors")
 	procGetMonitorInfo         = user32.NewProc("GetMonitorInfoW")
 	procMonitorFromPoint       = user32.NewProc("MonitorFromPoint")
@@ -71,6 +81,17 @@ const (
 	monitorDefaultToNearest = 2
 	monitorInfoPrimary      = 0x00000001
 	mdtEffectiveDPI         = 0
+
+	imageIcon      = 1
+	lrLoadFromFile = 0x00000010
+	wmSetIcon      = 0x0080
+	iconSmall      = 0
+	iconBig        = 1
+
+	wsExToolWindow   = 0x00000080
+	wsExAppWindow    = 0x00040000
+	swHide           = 0
+	swShowNoActivate = 8
 )
 
 // Manager owns the native window handle and any registered hotkeys.
@@ -83,6 +104,10 @@ type Manager struct {
 	hotkeys  map[int]func()
 	hotkeyID int
 	stopHot  chan struct{}
+
+	iconMu    sync.Mutex
+	iconBig   windows.Handle
+	iconSmall windows.Handle
 }
 
 // New creates a platform manager. The HWND is resolved lazily because the
@@ -338,6 +363,105 @@ func (m *Manager) ClickThrough() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.through
+}
+
+// SetWindowIcon replaces the taskbar and Alt-Tab icons with an .ico file.
+func (m *Manager) SetWindowIcon(path string) error {
+	if path == "" {
+		return nil
+	}
+	hwnd, err := m.HWND()
+	if err != nil {
+		return err
+	}
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return err
+	}
+	load := func(size uintptr) (windows.Handle, error) {
+		h, _, callErr := procLoadImageW.Call(0, uintptr(unsafe.Pointer(name)), imageIcon, size, size, lrLoadFromFile)
+		if h == 0 {
+			return 0, fmt.Errorf("LoadImageW(%s): %v", path, callErr)
+		}
+		return windows.Handle(h), nil
+	}
+	big, err := load(32)
+	if err != nil {
+		return err
+	}
+	small, err := load(16)
+	if err != nil {
+		procDestroyIcon.Call(uintptr(big))
+		return err
+	}
+	m.iconMu.Lock()
+	oldBig, oldSmall := m.iconBig, m.iconSmall
+	m.iconBig, m.iconSmall = big, small
+	m.iconMu.Unlock()
+	procSendMessageW.Call(uintptr(hwnd), wmSetIcon, iconBig, uintptr(big))
+	procSendMessageW.Call(uintptr(hwnd), wmSetIcon, iconSmall, uintptr(small))
+	if oldBig != 0 {
+		procDestroyIcon.Call(uintptr(oldBig))
+	}
+	if oldSmall != 0 {
+		procDestroyIcon.Call(uintptr(oldSmall))
+	}
+	return nil
+}
+
+// SetTaskbarHidden hides or restores the taskbar and Alt-Tab entry without
+// touching the window contents. It keeps an already hidden window hidden.
+func (m *Manager) SetTaskbarHidden(hidden bool) error {
+	hwnd, err := m.HWND()
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ex, _, _ := procGetWindowLongPtr.Call(uintptr(hwnd), gwlExStyle)
+	next := ex
+	if hidden {
+		next |= wsExToolWindow
+		next &^= wsExAppWindow
+	} else {
+		next &^= wsExToolWindow
+		next |= wsExAppWindow
+	}
+	if next == ex {
+		return nil
+	}
+	_, _, _ = procSetWindowLongPtr.Call(uintptr(hwnd), gwlExStyle, next)
+	if visible, _, _ := procIsWindowVisible.Call(uintptr(hwnd)); visible != 0 {
+		// The shell only re-evaluates the button after a visibility change;
+		// show without activating so the reader keeps focus.
+		procShowWindow.Call(uintptr(hwnd), swHide)
+		procShowWindow.Call(uintptr(hwnd), swShowNoActivate)
+	}
+	return nil
+}
+
+// CursorPosition reports the pointer and the primary screen size.
+func (m *Manager) CursorPosition() CursorInfo {
+	var pt struct{ X, Y int32 }
+	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+	w, _, _ := procGetSystemMetrics.Call(0)
+	h, _, _ := procGetSystemMetrics.Call(1)
+	return CursorInfo{X: int(pt.X), Y: int(pt.Y), Width: int(w), Height: int(h)}
+}
+
+// SetWindowRadius clears the legacy native window region. Rounded corners are
+// painted by the CSS frame over a transparent window: SetWindowRgn works on a
+// 1-bit mask, so a native round-rect region cannot antialias its edge and the
+// corners look jagged (especially at 125%/150% display scaling). The radius
+// argument is kept for API compatibility; the visual radius lives in
+// --window-radius and is applied by .app-root / .window-frame.
+func (m *Manager) SetWindowRadius(int) error {
+	hwnd, err := m.HWND()
+	if err != nil {
+		return err
+	}
+	procSetWindowRgn.Call(uintptr(hwnd), 0, 1)
+	return nil
 }
 
 // SetTopmost pins or unpins the window.
