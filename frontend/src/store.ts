@@ -11,6 +11,7 @@ export type Route =
   | { name: 'stats' }
   | { name: 'assistant' }
   | { name: 'traversal' }
+  | { name: 'branch'; branchId: string }
   | { name: 'settings' }
   | { name: 'mp' }
   | { name: 'detail'; bookId: string }

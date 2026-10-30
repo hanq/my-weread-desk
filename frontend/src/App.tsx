@@ -15,6 +15,7 @@ import { SettingsView } from './views/SettingsView';
 import { StatsView } from './views/StatsView';
 import { AssistantView } from './views/AssistantView';
 import { TraversalView } from './views/TraversalView';
+import { BranchView } from './views/BranchView';
 import { MPView } from './views/MPView';
 import type { DownloadState, Settings } from './types';
 
@@ -232,6 +233,7 @@ export default function App() {
           {route.name === 'stats' ? <StatsView /> : null}
           {route.name === 'assistant' ? <AssistantView /> : null}
           {route.name === 'traversal' ? <TraversalView /> : null}
+          {route.name === 'branch' ? <BranchView branchId={route.branchId} /> : null}
           {route.name === 'mp' ? <MPView /> : null}
         </div>
         {navOpen ? <div className="nav-backdrop" onClick={() => setNavOpen(false)} /> : null}

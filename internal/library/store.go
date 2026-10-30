@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 7
+const schemaVersion = 11
 
 // Store wraps the SQLite cache. It intentionally uses a single connection:
 // the app is a single user desktop client and serialising writes removes every
@@ -211,6 +211,78 @@ func (s *Store) migrate() error {
 			PRIMARY KEY (book_id, job, item_key)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_story_job_item ON story_job_item(book_id, job, status)`,
+		// Canon anchors are the load-bearing beats of the original work. They are
+		// book-level definitions; whether a branch has realised one is branch
+		// state, tracked separately, so the same graph serves every world line.
+		`CREATE TABLE IF NOT EXISTS canon_anchor (
+			id TEXT NOT NULL,
+			book_id TEXT NOT NULL,
+			scene_seq INTEGER NOT NULL DEFAULT 0,
+			deadline_seq INTEGER NOT NULL DEFAULT 0,
+			kind TEXT NOT NULL DEFAULT 'beat',
+			summary TEXT NOT NULL DEFAULT '',
+			weight REAL NOT NULL DEFAULT 0.8,
+			source TEXT NOT NULL DEFAULT 'manual',
+			created_at INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (book_id, id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_canon_anchor_book ON canon_anchor(book_id, deadline_seq)`,
+		`CREATE INDEX IF NOT EXISTS idx_canon_anchor_scene ON canon_anchor(book_id, scene_seq)`,
+		// World sheet: the small, book-specific number set derived from the text.
+		// It is deliberately tiny — a model cannot track ten stats reliably.
+		`CREATE TABLE IF NOT EXISTS world_stat (
+			book_id TEXT NOT NULL,
+			key TEXT NOT NULL,
+			label TEXT NOT NULL DEFAULT '',
+			kind TEXT NOT NULL DEFAULT 'resource',
+			min REAL NOT NULL DEFAULT 0,
+			max REAL NOT NULL DEFAULT 100,
+			initial REAL NOT NULL DEFAULT 0,
+			decay REAL NOT NULL DEFAULT 0,
+			evidence_seq INTEGER NOT NULL DEFAULT -1,
+			source TEXT NOT NULL DEFAULT 'derived',
+			PRIMARY KEY (book_id, key)
+		)`,
+		`CREATE TABLE IF NOT EXISTS world_item (
+			book_id TEXT NOT NULL,
+			id TEXT NOT NULL,
+			name TEXT NOT NULL DEFAULT '',
+			kind TEXT NOT NULL DEFAULT '',
+			owner TEXT NOT NULL DEFAULT '',
+			first_seq INTEGER NOT NULL DEFAULT -1,
+			effects TEXT NOT NULL DEFAULT '',
+			limit_per_branch INTEGER NOT NULL DEFAULT 1,
+			source TEXT NOT NULL DEFAULT 'derived',
+			PRIMARY KEY (book_id, id)
+		)`,
+		// A branch is a world line. Its constitution and state live in the row so
+		// a branch can be exported or resumed without extra side files.
+		`CREATE TABLE IF NOT EXISTS story_branch (
+			id TEXT PRIMARY KEY,
+			book_id TEXT NOT NULL,
+			fork_seq INTEGER NOT NULL DEFAULT 0,
+			rejoin_seq INTEGER NOT NULL DEFAULT 0,
+			title TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'active',
+			summary TEXT NOT NULL DEFAULT '',
+			state_json TEXT NOT NULL DEFAULT '{}',
+			memory_md TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT 0,
+			updated_at INTEGER NOT NULL DEFAULT 0
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_story_branch_book ON story_branch(book_id, created_at)`,
+		`CREATE TABLE IF NOT EXISTS story_branch_scene (
+			branch_id TEXT NOT NULL,
+			seq INTEGER NOT NULL,
+			canon_seq INTEGER NOT NULL DEFAULT -1,
+			text TEXT NOT NULL,
+			summary TEXT NOT NULL DEFAULT '',
+			verdict_json TEXT NOT NULL DEFAULT '',
+			choices_json TEXT NOT NULL DEFAULT '[]',
+			model TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (branch_id, seq)
+		)`,
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -236,6 +308,11 @@ func (s *Store) migrate() error {
 		if err := ensureColumn(tx, "book", col.name, col.spec); err != nil {
 			return err
 		}
+	}
+	// story_branch_scene gained a choices column after branches shipped, so an
+	// existing database needs the same guarded ALTER.
+	if err := ensureColumn(tx, "story_branch_scene", "choices_json", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
+		return err
 	}
 	// An index on a new column can only be created after the ALTER TABLE pass:
 	// on a database from the previous schema the column does not exist yet.

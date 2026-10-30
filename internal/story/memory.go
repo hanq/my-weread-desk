@@ -185,6 +185,19 @@ func (m *Memory) SetUserBody(body string) error {
 	return nil
 }
 
+// AddUserRule appends a rule to the user section and re-renders the block.
+// This is the only programmatic path allowed to change user rules; the
+// generation path never calls it, which is what keeps the constitution stable.
+func (m *Memory) AddUserRule(rule string) error {
+	rule = strings.TrimSpace(rule)
+	if rule == "" {
+		return nil
+	}
+	m.UserRules = append(m.UserRules, rule)
+	m.UserBody = renderUserBody(m)
+	return nil
+}
+
 // Render serialises the constitution. Front-matter keeps a flat key layout so
 // the file stays diff-friendly and a hand edit cannot silently change nesting.
 func (m *Memory) Render() (string, error) {

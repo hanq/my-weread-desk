@@ -4,8 +4,9 @@
 
 import type {
   AuthState, Book, BookDetail, Chapter, CursorInfo, DeviceReadStats, DownloadState, LoginPoll, MPArticle,
-  AISource, Note, Position, Progress, QRCode, RAGStatus, ReadStats, ReaderSession,
-  SearchResult, Settings, ShelfGroup, StoryGraphStatus, StoryScene, Theme, WindowState,
+  AISource, Branch, BranchDetail, BranchScene, CanonAnchor, Intent, Note, Position, Progress,
+  QRCode, RAGStatus, ReadStats, ReaderSession, SearchResult, Settings, ShelfGroup,
+  StoryGraphStatus, StoryScene, Theme, WindowState, WorldItem, WorldSheet, WorldStat,
 } from './types';
 
 type AnyFn = (...args: unknown[]) => Promise<unknown>;
@@ -89,6 +90,40 @@ export const api = {
   cancelStoryGraph: (bookId: string) => call<void>('CancelStoryGraph', bookId),
   storyTimeline: (bookId: string) => call<StoryScene[]>('StoryTimeline', bookId),
   dropStoryGraph: (bookId: string) => call<void>('DropStoryGraph', bookId),
+  storyAnchors: (bookId: string) => call<CanonAnchor[]>('StoryAnchors', bookId),
+  saveAnchor: (anchor: CanonAnchor) => call<CanonAnchor[]>('SaveAnchor', anchor),
+  deleteAnchor: (bookId: string, anchorId: string) =>
+    call<CanonAnchor[]>('DeleteAnchor', bookId, anchorId),
+  suggestAnchors: (bookId: string) => call<CanonAnchor[]>('SuggestAnchors', bookId),
+
+  // world lines
+  startBranch: (bookId: string, forkSeq: number, intent: string) =>
+    call<Branch>('StartBranch', bookId, forkSeq, intent),
+  branches: (bookId: string) => call<Branch[]>('Branches', bookId),
+  branchDetail: (branchId: string) => call<BranchDetail>('BranchDetail', branchId),
+  continueBranch: (branchId: string, intent: string) =>
+    call<BranchScene>('ContinueBranch', branchId, intent),
+  compileIntent: (branchId: string, intent: string) =>
+    call<Intent>('CompileIntent', branchId, intent),
+  rejoinBranch: (branchId: string) => call<Branch>('RejoinBranch', branchId),
+  deleteBranch: (branchId: string) => call<void>('DeleteBranch', branchId),
+  exportBranch: (branchId: string) => call<string>('ExportBranch', branchId),
+  importBranch: (bookId: string, payload: string) =>
+    call<Branch>('ImportBranch', bookId, payload),
+
+  // world sheet
+  worldSheet: (bookId: string) => call<WorldSheet>('WorldSheet', bookId),
+  saveWorldSheet: (bookId: string, sheet: WorldSheet) =>
+    call<WorldSheet>('SaveWorldSheet', bookId, sheet),
+  deriveWorldSheet: (bookId: string) => call<WorldSheet>('DeriveWorldSheet', bookId),
+  saveWorldStat: (bookId: string, stat: WorldStat) =>
+    call<WorldSheet>('SaveWorldStat', bookId, stat),
+  deleteWorldStat: (bookId: string, key: string) =>
+    call<WorldSheet>('DeleteWorldStat', bookId, key),
+  saveWorldItem: (bookId: string, item: WorldItem) =>
+    call<WorldSheet>('SaveWorldItem', bookId, item),
+  deleteWorldItem: (bookId: string, id: string) =>
+    call<WorldSheet>('DeleteWorldItem', bookId, id),
   search: (keyword: string, scope: string, page: number) =>
     call<SearchResult>('Search', keyword, scope, page),
   bookDetail: (bookId: string) => call<BookDetail>('BookDetail', bookId),

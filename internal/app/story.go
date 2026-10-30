@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -281,4 +283,160 @@ func (a *App) aiReady() bool {
 	cfg := a.settings.Get().AI
 	return cfg.Enabled && cfg.Consent &&
 		strings.TrimSpace(cfg.BaseURL) != "" && strings.TrimSpace(cfg.Model) != ""
+}
+
+// ---------------------------------------------------------------- anchors
+
+// StorySteering is the read-only view of the world-will logic.
+type StorySteering struct {
+	Gravity    float64         `json:"gravity"`
+	Divergence float64         `json:"divergence"`
+	Pressure   *story.Pressure `json:"pressure,omitempty"`
+}
+
+// StoryAnchors returns the canon anchors of a book.
+func (a *App) StoryAnchors(bookID string) ([]story.CanonAnchor, error) {
+	anchors, err := a.store.Anchors(bookID)
+	if err != nil {
+		return nil, err
+	}
+	if anchors == nil {
+		return []story.CanonAnchor{}, nil
+	}
+	return anchors, nil
+}
+
+// SaveAnchor creates or updates one anchor and returns the new set.
+func (a *App) SaveAnchor(anchor story.CanonAnchor) ([]story.CanonAnchor, error) {
+	anchor.BookID = strings.TrimSpace(anchor.BookID)
+	if anchor.BookID == "" {
+		return nil, errors.New("缺少书籍 ID")
+	}
+	anchor.Summary = strings.TrimSpace(anchor.Summary)
+	if anchor.Summary == "" {
+		return nil, errors.New("锚点描述不能为空")
+	}
+	if anchor.SceneSeq < 0 {
+		anchor.SceneSeq = 0
+	}
+	if anchor.DeadlineSeq < anchor.SceneSeq {
+		anchor.DeadlineSeq = anchor.SceneSeq
+	}
+	if anchor.Weight <= 0 || anchor.Weight > 1 {
+		anchor.Weight = 0.8
+	}
+	if anchor.Kind == "" {
+		anchor.Kind = story.AnchorBeat
+	}
+	if anchor.ID == "" {
+		anchor.ID = fmt.Sprintf("anchor-%d", time.Now().UnixNano())
+	}
+	if anchor.Source == "" {
+		anchor.Source = "manual"
+	}
+	if err := a.store.UpsertAnchor(anchor); err != nil {
+		return nil, err
+	}
+	return a.StoryAnchors(anchor.BookID)
+}
+
+// DeleteAnchor removes one anchor and returns the remaining set.
+func (a *App) DeleteAnchor(bookID, anchorID string) ([]story.CanonAnchor, error) {
+	if err := a.store.DeleteAnchor(bookID, anchorID); err != nil {
+		return nil, err
+	}
+	return a.StoryAnchors(bookID)
+}
+
+// SuggestAnchors asks the model for candidate anchors.
+//
+// Candidates are returned unsaved. An anchor steers the story, so adopting one
+// has to be an explicit act; silently writing model guesses into the canon
+// would let the model decide what the book is about.
+func (a *App) SuggestAnchors(bookID string) ([]story.CanonAnchor, error) {
+	bookID = strings.TrimSpace(bookID)
+	if bookID == "" {
+		return nil, errors.New("缺少书籍 ID")
+	}
+	if !a.aiReady() {
+		return nil, errors.New("需要先启用 AI 并确认正文片段发送")
+	}
+	scenes, err := a.store.StoryScenes(bookID)
+	if err != nil {
+		return nil, err
+	}
+	if len(scenes) == 0 {
+		return nil, errors.New("请先建立时间线")
+	}
+
+	cfg := a.settings.Get().AI
+	title := bookID
+	if book, berr := a.store.Book(bookID); berr == nil && book != nil && book.Title != "" {
+		title = book.Title
+	}
+	system, user := story.BuildAnchorPrompt(title, scenes)
+
+	provider := ai.NewOpenAI(ai.Config{
+		BaseURL: cfg.BaseURL, APIKey: cfg.APIKey, Model: cfg.Model,
+		Temperature: cfg.Temperature, MaxTokens: 800,
+	})
+	ctx, cancel := context.WithTimeout(a.ctxOrBackground(), 90*time.Second)
+	defer cancel()
+	answer, err := provider.Chat(ctx, ai.Request{
+		Model: cfg.Model,
+		Messages: []ai.Message{
+			{Role: "system", Content: system},
+			{Role: "user", Content: user},
+		},
+		Temperature: 0.2,
+		MaxTokens:   800,
+	}, nil)
+	if err != nil {
+		return nil, err
+	}
+	fields, err := story.ParseAnchors(answer)
+	if err != nil {
+		return nil, err
+	}
+
+	seqs := make(map[int]bool, len(scenes))
+	for _, sc := range scenes {
+		seqs[sc.Seq] = true
+	}
+	out := make([]story.CanonAnchor, 0, len(fields))
+	for i, f := range fields {
+		if !seqs[f.SceneSeq] {
+			continue
+		}
+		out = append(out, story.CanonAnchor{
+			ID:          fmt.Sprintf("llm-%d-%d", time.Now().UnixNano(), i),
+			BookID:      bookID,
+			SceneSeq:    f.SceneSeq,
+			DeadlineSeq: f.SceneSeq + 2,
+			Kind:        f.Kind,
+			Summary:     f.Summary,
+			Weight:      f.Weight,
+			Source:      "llm",
+		})
+	}
+	if len(out) == 0 {
+		return nil, errors.New("模型给出的锚点都不在时间线内")
+	}
+	return out, nil
+}
+
+// StorySteering reports gravity, divergence and the anchor that would be pushed
+// at a given scene. No branch exists yet; this exposes the logic for inspection.
+func (a *App) StorySteering(bookID string, currentSeq int) (StorySteering, error) {
+	anchors, err := a.store.Anchors(bookID)
+	if err != nil {
+		return StorySteering{}, err
+	}
+	diverge := story.Divergence(currentSeq, anchors, nil, 0, 0)
+	gravity := story.Gravity(currentSeq, anchors, nil)
+	return StorySteering{
+		Gravity:    gravity,
+		Divergence: diverge,
+		Pressure:   story.PlanPressure(currentSeq, anchors, nil, diverge),
+	}, nil
 }

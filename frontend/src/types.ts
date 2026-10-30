@@ -239,6 +239,105 @@ export interface StoryScene {
   source: string;
 }
 
+export interface WorldStat {
+  key: string;
+  label: string;
+  kind: string;
+  min: number;
+  max: number;
+  initial: number;
+  decay: number;
+  evidenceSeq: number;
+  source: string;
+}
+
+export interface WorldItem {
+  id: string;
+  name: string;
+  kind: string;
+  owner: string;
+  firstSeq: number;
+  effects: string;
+  limitPerBranch: number;
+  source: string;
+}
+
+export interface WorldSheet {
+  bookId: string;
+  stats: WorldStat[];
+  items: WorldItem[];
+}
+
+export interface StoryState {
+  assumptions: string[];
+  facts: Record<string, string>;
+  relations: Record<string, number>;
+  dead: string[];
+  items: Record<string, string>;
+  knows: Record<string, string[]>;
+  satisfiedAnchors: string[];
+  stats?: Record<string, number>;
+  inventory?: Record<string, number>;
+}
+
+export interface Intent {
+  raw: string;
+  feasibility: string;
+  goal: string;
+  reason: string;
+  blockedBy?: string[];
+  alternatives?: string[];
+  statePatch?: unknown;
+}
+
+export interface Branch {
+  id: string;
+  bookId: string;
+  forkSeq: number;
+  rejoinSeq: number;
+  title: string;
+  status: string;
+  summary: string;
+  state: StoryState;
+  memoryMd: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Choice {
+  id: string;
+  text: string;
+  hint?: string;
+}
+
+export interface BranchScene {
+  branchId: string;
+  seq: number;
+  canonSeq: number;
+  text: string;
+  summary: string;
+  verdicts?: { rule: string; evidence: string; severity: string }[];
+  choices?: Choice[];
+  model: string;
+  createdAt: number;
+}
+
+export interface BranchDetail {
+  branch: Branch;
+  scenes: BranchScene[];
+}
+
+export interface CanonAnchor {
+  id: string;
+  bookId: string;
+  sceneSeq: number;
+  deadlineSeq: number;
+  kind: string;
+  summary: string;
+  weight: number;
+  source: string;
+}
+
 export interface StoryGraphStatus {
   bookId: string;
   status: string;
@@ -365,6 +464,8 @@ export interface ReadStats {
   baseTime: number;
   totalReadTime: number;
   dailyReadTimes: number[];
+  /** Bucket start (unix seconds) for each dailyReadTimes entry. */
+  dailyReadTimesAt?: number[];
   readDays: number;
   dayAverageReadTime: number;
   compare: number;
