@@ -50,6 +50,9 @@ type App struct {
 	askMu    sync.Mutex
 	asks     map[string]context.CancelFunc
 
+	// storyIndex runs the resumable scene-extraction job.
+	storyIndex *storyBuilder
+
 	hiddenMu      sync.Mutex
 	hidden        bool
 	taskbarMu     sync.Mutex
@@ -106,6 +109,7 @@ func New() (*App, *library.Store, error) {
 	a.reporter = newReporter(a)
 	a.downloader = newDownloader(a)
 	a.ragIndex = rag.NewRetriever(store)
+	a.storyIndex = newStoryBuilder(a)
 	return a, store, nil
 }
 
