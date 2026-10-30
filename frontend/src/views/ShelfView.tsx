@@ -5,9 +5,12 @@ import { Icon } from '../icons';
 import { navigate, store, toast, useApp } from '../store';
 import type { Book } from '../types';
 
-type Filter = 'all' | 'reading' | 'finished' | 'mp';
+type Filter = 'all' | 'reading' | 'finished' | 'mp' | 'folders';
 type Layout = 'grid' | 'list';
 type Sort = 'recent' | 'added' | 'title';
+
+// Pseudo folder for books that are not assigned to any folder.
+const UNGROUPED = '__ungrouped__';
 
 export function ShelfView() {
   const app = useApp();
@@ -19,8 +22,9 @@ export function ShelfView() {
   const [menuPickingGroup, setMenuPickingGroup] = useState(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const openingRef = useRef<string | null>(null);
-  // 'all' | 'ungrouped' | a folder id.
-  const [groupFilter, setGroupFilter] = useState('all');
+  // null = folder list; a folder id or UNGROUPED = folder contents.
+  const [folderOpen, setFolderOpen] = useState<string | null>(null);
+  const [folderMenu, setFolderMenu] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState('');
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
@@ -29,12 +33,14 @@ export function ShelfView() {
   const submittingRef = useRef(false);
 
   const books = useMemo(() => {
+    // The folder list has no book grid; opening a folder switches back to it.
+    if (filter === 'folders' && !folderOpen) return [];
     let list = app.books;
     if (filter === 'finished') list = list.filter((b) => b.finished);
     if (filter === 'reading') list = list.filter((b) => !b.finished && b.lastRead > 0);
     if (filter === 'mp') list = list.filter((b) => b.isMp);
-    if (groupFilter === 'ungrouped') list = list.filter((b) => !b.groupId);
-    else if (groupFilter !== 'all') list = list.filter((b) => b.groupId === groupFilter);
+    if (folderOpen === UNGROUPED) list = list.filter((b) => !b.groupId);
+    else if (folderOpen) list = list.filter((b) => b.groupId === folderOpen);
     const q = query.trim().toLowerCase();
     if (q) list = list.filter((b) => b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q));
 
@@ -51,7 +57,29 @@ export function ShelfView() {
       sorted.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'));
     }
     return sorted;
-  }, [app.books, filter, groupFilter, query, sort]);
+  }, [app.books, filter, folderOpen, query, sort]);
+
+  // Folder cards summarise membership from the live book list so the counts and
+  // the latest read time stay correct after a book is moved.
+  const folders = useMemo(() => {
+    const counts = new Map<string, number>();
+    const latest = new Map<string, number>();
+    for (const b of app.books) {
+      if (!b.groupId) continue;
+      counts.set(b.groupId, (counts.get(b.groupId) ?? 0) + 1);
+      latest.set(b.groupId, Math.max(latest.get(b.groupId) ?? 0, b.lastRead || 0));
+    }
+    const q = query.trim().toLowerCase();
+    return app.groups
+      .filter((g) => !q || g.name.toLowerCase().includes(q))
+      .map((g) => ({ ...g, count: counts.get(g.id) ?? 0, latest: latest.get(g.id) ?? 0 }))
+      .sort((a, b) => b.latest - a.latest || a.name.localeCompare(b.name, 'zh-CN'));
+  }, [app.books, app.groups, query]);
+
+  const ungrouped = useMemo(() => app.books.filter((b) => !b.groupId).length, [app.books]);
+
+  const folderName =
+    folderOpen === UNGROUPED ? '未分组' : app.groups.find((g) => g.id === folderOpen)?.name ?? '';
 
   const open = async (book: Book) => {
     if (book.isAudio) {
@@ -150,7 +178,7 @@ export function ShelfView() {
     if (!window.confirm('删除这个分组？书籍不会被移出书架。')) return;
     try {
       await api.deleteGroup(groupId);
-      if (groupFilter === groupId) setGroupFilter('all');
+      if (folderOpen === groupId) setFolderOpen(null);
       await refreshLibrary();
       toast('已删除分组', 'success');
     } catch (e) {
@@ -173,8 +201,15 @@ export function ShelfView() {
   return (
     <>
       <div className="page-head">
-        <h1>书架</h1>
-        <span className="sub">{app.books.length} 本</span>
+        {folderOpen ? (
+          <button className="icon-btn" onClick={() => setFolderOpen(null)} title="返回文件夹">
+            <Icon name="left" size={16} />
+          </button>
+        ) : null}
+        <h1>{folderOpen ? folderName : '书架'}</h1>
+        <span className="sub">
+          {filter === 'folders' && !folderOpen ? `${folders.length} 个文件夹` : `${app.books.length} 本`}
+        </span>
         <div className="grow" />
         <div className="seg">
           {(
@@ -183,85 +218,32 @@ export function ShelfView() {
               ['reading', '在读'],
               ['finished', '读完'],
               ['mp', '公众号'],
+              ['folders', '文件夹'],
             ] as [Filter, string][]
           ).map(([k, label]) => (
-            <button key={k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>
+            <button
+              key={k}
+              className={filter === k ? 'on' : ''}
+              onClick={() => {
+                setFilter(k);
+                setFolderOpen(null);
+                setFolderMenu(null);
+                setEditingGroup(null);
+              }}
+            >
               {label}
             </button>
           ))}
         </div>
-        <button className={`icon-btn${layout === 'grid' ? ' active' : ''}`} onClick={() => setLayout('grid')} title="网格">
-          <Icon name="columns" size={16} />
-        </button>
-        <button className={`icon-btn${layout === 'list' ? ' active' : ''}`} onClick={() => setLayout('list')} title="列表">
-          <Icon name="list" size={16} />
-        </button>
-      </div>
-
-      <div className="shelf-groups">
-        <button className={`group-chip${groupFilter === 'all' ? ' on' : ''}`} onClick={() => setGroupFilter('all')}>
-          <Icon name="folder" size={14} /> 全部
-        </button>
-        {app.groups.map((g) =>
-          editingGroup === g.id ? (
-            <input
-              key={g.id}
-              className="group-input"
-              autoFocus
-              value={editDraft}
-              onChange={(e) => setEditDraft(e.target.value)}
-              onBlur={() => void commitRename(g.id)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void commitRename(g.id);
-                if (e.key === 'Escape') setEditingGroup(null);
-              }}
-            />
-          ) : (
-            <button
-              key={g.id}
-              className={`group-chip${groupFilter === g.id ? ' on' : ''}`}
-              onClick={() => setGroupFilter(g.id)}
-              onDoubleClick={() => {
-                setEditingGroup(g.id);
-                setEditDraft(g.name);
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                void removeGroup(g.id);
-              }}
-              title="双击重命名，右键删除"
-            >
-              <Icon name="folder" size={14} /> {g.name}
-              <span className="count">{g.bookIds?.length ?? 0}</span>
+        {filter === 'folders' && !folderOpen ? null : (
+          <>
+            <button className={`icon-btn${layout === 'grid' ? ' active' : ''}`} onClick={() => setLayout('grid')} title="网格">
+              <Icon name="columns" size={16} />
             </button>
-          ),
-        )}
-        <button
-          className={`group-chip${groupFilter === 'ungrouped' ? ' on' : ''}`}
-          onClick={() => setGroupFilter('ungrouped')}
-        >
-          未分组
-        </button>
-        {creating ? (
-          <input
-            className="group-input"
-            autoFocus
-            value={draft}
-            placeholder="分组名称"
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => void submitGroup()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void submitGroup();
-              if (e.key === 'Escape') {
-                setCreating(false);
-                setDraft('');
-              }
-            }}
-          />
-        ) : (
-          <button className="group-chip ghost" onClick={() => setCreating(true)} title="新建分组">
-            <Icon name="plus" size={14} /> 新建
-          </button>
+            <button className={`icon-btn${layout === 'list' ? ' active' : ''}`} onClick={() => setLayout('list')} title="列表">
+              <Icon name="list" size={16} />
+            </button>
+          </>
         )}
       </div>
 
@@ -271,31 +253,164 @@ export function ShelfView() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="在书架中筛选"
+            placeholder={filter === 'folders' && !folderOpen ? '筛选文件夹' : '在书架中筛选'}
             style={{ border: 0, background: 'transparent', outline: 'none', width: '100%' }}
           />
         </div>
         <div className="grow" />
-        <div className="seg">
-          {(
-            [
-              ['recent', '最近阅读'],
-              ['added', '加入书架'],
-              ['title', '书名'],
-            ] as [Sort, string][]
-          ).map(([k, label]) => (
-            <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>
-              {label}
+        {filter === 'folders' && !folderOpen ? null : (
+          <>
+            <div className="seg">
+              {(
+                [
+                  ['recent', '最近阅读'],
+                  ['added', '加入书架'],
+                  ['title', '书名'],
+                ] as [Sort, string][]
+              ).map(([k, label]) => (
+                <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button className="btn btn-ghost" onClick={() => navigate({ name: 'search' })}>
+              <Icon name="search" size={14} /> 搜索书城
             </button>
-          ))}
-        </div>
-        <button className="btn btn-ghost" onClick={() => navigate({ name: 'search' })}>
-          <Icon name="search" size={14} /> 搜索书城
-        </button>
+          </>
+        )}
       </div>
 
       <div className="page-body">
-        {app.shelfState === 'loading' && app.books.length === 0 ? (
+        {filter === 'folders' && !folderOpen ? (
+          <div className="folder-grid">
+            {!query ? (
+              <div
+                className="folder-card"
+                role="button"
+                tabIndex={0}
+                onClick={() => setFolderOpen(UNGROUPED)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') setFolderOpen(UNGROUPED);
+                }}
+              >
+                <div className="folder-head">
+                  <Icon name="folder" size={16} />
+                  <span className="folder-name">未分组</span>
+                </div>
+                <div className="folder-meta">{ungrouped} 本</div>
+              </div>
+            ) : null}
+
+            {folders.map((g) => (
+              <div
+                key={g.id}
+                className="folder-card"
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  if (folderMenu) {
+                    setFolderMenu(null);
+                    return;
+                  }
+                  setFolderOpen(g.id);
+                }}
+                onDoubleClick={() => {
+                  setEditingGroup(g.id);
+                  setEditDraft(g.name);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  void removeGroup(g.id);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') setFolderOpen(g.id);
+                }}
+              >
+                <div className="folder-head">
+                  <Icon name="folder" size={16} />
+                  {editingGroup === g.id ? (
+                    <input
+                      className="group-input folder-rename"
+                      autoFocus
+                      value={editDraft}
+                      onChange={(e) => setEditDraft(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      onBlur={() => void commitRename(g.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void commitRename(g.id);
+                        if (e.key === 'Escape') setEditingGroup(null);
+                      }}
+                    />
+                  ) : (
+                    <span className="folder-name truncate">{g.name}</span>
+                  )}
+                </div>
+                <div className="folder-meta">
+                  {g.count} 本{g.latest ? ` · ${formatReadDate(g.latest)}` : ''}
+                </div>
+                <button
+                  className="folder-more"
+                  title="文件夹操作"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFolderMenu(folderMenu === g.id ? null : g.id);
+                  }}
+                >
+                  <Icon name="more" size={14} />
+                </button>
+                {folderMenu === g.id ? (
+                  <div className="folder-menu" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => {
+                        setFolderMenu(null);
+                        setEditingGroup(g.id);
+                        setEditDraft(g.name);
+                      }}
+                    >
+                      重命名
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFolderMenu(null);
+                        void removeGroup(g.id);
+                      }}
+                    >
+                      删除
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+
+            {creating ? (
+              <div className="folder-card folder-new">
+                <input
+                  className="group-input"
+                  autoFocus
+                  value={draft}
+                  placeholder="文件夹名称"
+                  onChange={(e) => setDraft(e.target.value)}
+                  onBlur={() => void submitGroup()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void submitGroup();
+                    if (e.key === 'Escape') {
+                      setCreating(false);
+                      setDraft('');
+                    }
+                  }}
+                />
+              </div>
+            ) : (
+              <button className="folder-card folder-new" onClick={() => setCreating(true)}>
+                <Icon name="plus" size={16} /> 新建文件夹
+              </button>
+            )}
+
+            {folders.length === 0 && !query ? (
+              <p className="faint folder-hint">还没有文件夹。新建后在书籍上右键「移动到分组」即可归档。</p>
+            ) : null}
+          </div>
+        ) : app.shelfState === 'loading' && app.books.length === 0 ? (
           <div className="empty">
             <div className="spinner" />
             <span>正在同步书架…</span>
@@ -303,8 +418,8 @@ export function ShelfView() {
         ) : books.length === 0 ? (
           <div className="empty">
             <Icon name="book" size={34} />
-            <p>{query ? '没有匹配的书' : '书架还是空的，先同步一次吧'}</p>
-            {!query ? (
+            <p>{query ? '没有匹配的书' : folderOpen ? '这个文件夹还没有书籍' : '书架还是空的，先同步一次吧'}</p>
+            {!query && !folderOpen ? (
               <button
                 className="btn btn-primary"
                 onClick={() => {
@@ -487,4 +602,12 @@ function MenuItem({
       <Icon name={icon} size={14} /> {label}
     </button>
   );
+}
+
+/** Folder cards show the most recent read date of their books. */
+function formatReadDate(ts: number): string {
+  const d = new Date(ts * 1000);
+  const now = new Date();
+  if (d.getFullYear() === now.getFullYear()) return `${d.getMonth() + 1}月${d.getDate()}日`;
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
 }

@@ -697,7 +697,9 @@ func (c *Client) MPArticles(ctx context.Context, accountID string, offset int) (
 	if err != nil {
 		return nil, err
 	}
-	var out []weread.MPArticle
+	// Non-nil so an account without articles marshals as [] rather than null;
+	// the renderer treats the value as an array.
+	out := make([]weread.MPArticle, 0, 16)
 	for _, group := range raw.Reviews {
 		for _, sub := range group.SubReviews {
 			r := sub.Review

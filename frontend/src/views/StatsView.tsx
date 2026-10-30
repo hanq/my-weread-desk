@@ -60,7 +60,17 @@ export function StatsView() {
   // Go marshals a nil slice as null, and the API omits dailyReadTimes for
   // periods without records, so the render below must not assume an array.
   const daily = stats?.dailyReadTimes ?? [];
+  const dailyAt = stats?.dailyReadTimesAt ?? [];
   const max = Math.max(1, ...daily);
+  const series = daily.length ? daily : new Array(7).fill(0);
+  // A month has 28+ buckets: labeling every one of them collides in a narrow
+  // window, so only every Nth bucket (and the last) gets a date.
+  const labelStep = series.length <= 12 ? 1 : Math.ceil(series.length / 10);
+  const labelAt = (i: number) => {
+    const ts = dailyAt[i];
+    if (!ts || (i % labelStep !== 0 && i !== series.length - 1)) return '';
+    return formatBucket(ts, mode);
+  };
 
   return (
     <>
@@ -133,17 +143,26 @@ export function StatsView() {
             <div className="stat-card">
               <div className="k">每日阅读时长</div>
               <div className="bars">
-                {(daily.length ? daily : new Array(7).fill(0)).map((v, i) => (
+                {series.map((v, i) => (
                   <div
                     key={i}
                     style={{ height: `${Math.max(2, (v / max) * 100)}%` }}
-                    title={formatDuration(v)}
+                    title={
+                      dailyAt[i]
+                        ? `${formatBucket(dailyAt[i], mode)} · ${formatDuration(v)}`
+                        : formatDuration(v)
+                    }
                   />
+                ))}
+              </div>
+              <div className="chart-labels">
+                {series.map((_, i) => (
+                  <span key={i}>{labelAt(i)}</span>
                 ))}
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="stat-pair">
               <div className="stat-card">
                 <div className="k" style={{ marginBottom: 10 }}>
                   阅读最多的书
@@ -213,4 +232,12 @@ function formatDuration(seconds: number): string {
   const m = Math.round((seconds % 3600) / 60);
   if (h > 0) return `${h} 小时 ${m} 分`;
   return `${m} 分钟`;
+}
+
+/** Labels a chart bucket: a day for week/month, a month for a year, a year for all time. */
+function formatBucket(seconds: number, mode: string): string {
+  const d = new Date(seconds * 1000);
+  if (mode === 'overall') return String(d.getFullYear());
+  if (mode === 'annually') return `${d.getMonth() + 1}月`;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
 }

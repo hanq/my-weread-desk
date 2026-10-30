@@ -13,7 +13,7 @@ func TestDecodeStatsDirect(t *testing.T) {
 	if err := decodeStats(body, &out); err != nil {
 		t.Fatalf("decodeStats: %v", err)
 	}
-	if out.TotalReadTime.Int64() != 1234 || out.ReadDays.Int64() != 5 || len(out.DailyReadTimes) != 2 {
+	if out.TotalReadTime.Int64() != 1234 || out.ReadDays.Int64() != 5 || out.DailyReadTimes.Len() != 2 {
 		t.Fatalf("decoded = %+v", out)
 	}
 }

@@ -21,7 +21,9 @@
 /* ---------------------------------------------------------------- bars */
 
 .reader-bar {
-  position: relative;
+  position: absolute;
+  left: 0;
+  right: 0;
   z-index: 4;
   flex: none;
   --wails-draggable: drag;
@@ -36,7 +38,11 @@
   border-bottom: 1px solid color-mix(in srgb, var(--r-ink) 12%, transparent);
   transition: opacity 0.22s ease, transform 0.22s ease;
 }
+.reader-bar.top {
+  top: 0;
+}
 .reader-bar.bottom {
+  bottom: 0;
   border-bottom: 0;
   border-top: 1px solid color-mix(in srgb, var(--r-ink) 12%, transparent);
   height: 44px;
@@ -116,7 +122,7 @@
 }
 
 .reader.zen .reader-stage {
-  padding: calc(var(--r-margin-y, 32px) + 10px) var(--r-margin-x, 40px);
+  padding: var(--r-margin-y, 32px) var(--r-margin-x, 40px);
 }
 
 .paper {

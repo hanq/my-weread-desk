@@ -98,6 +98,10 @@
   .page-head .grow {
     display: none;
   }
+  .page-head .sub {
+    flex-basis: 100%;
+    order: 3;
+  }
   .shelf-toolbar {
     flex-wrap: wrap;
     row-gap: 8px;
@@ -283,8 +287,23 @@
   .shelf-grid {
     grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
   }
+  .folder-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
   .page-head h1 {
     font-size: 15.5px;
+  }
+  .page-body {
+    padding: 0 14px 22px;
+  }
+  .stat-grid {
+    gap: 10px;
+  }
+  .stat-card {
+    padding: 13px;
+  }
+  .stat-card .v {
+    font-size: 19px;
   }
   .shelf-list .book-row {
     flex-wrap: wrap;
@@ -312,6 +331,20 @@
   .shelf-grid {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     gap: 12px 10px;
+  }
+  .page-head {
+    padding: 14px 14px 10px;
+    gap: 8px;
+  }
+  .page-head .seg {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .stat-grid {
+    grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  }
+  .chart-labels span {
+    font-size: 9.5px;
   }
   .detail {
     padding: 4px 12px 18px;

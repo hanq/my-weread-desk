@@ -6,7 +6,6 @@ import type { Route } from '../store';
 const NAV: { key: Route['name']; label: string; icon: 'book' | 'search' | 'chart' | 'settings' | 'at' | 'sparkle' | 'clock' }[] = [
   { key: 'shelf', label: '书架', icon: 'book' },
   { key: 'search', label: '搜索', icon: 'search' },
-  { key: 'mp', label: '公众号', icon: 'at' },
   { key: 'assistant', label: '助手', icon: 'sparkle' },
   { key: 'traversal', label: '穿越', icon: 'clock' },
   { key: 'stats', label: '统计', icon: 'chart' },
@@ -41,7 +40,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   return (
     <nav className="sidebar">
       <div className="group-label">阅读</div>
-      {NAV.slice(0, 5).map((item) => (
+      {NAV.slice(0, 4).map((item) => (
         <button
           key={item.key}
           className={`nav-item${route.name === item.key || (item.key === 'shelf' && route.name === 'detail') || (item.key === 'shelf' && route.name === 'reader') ? ' on' : ''}`}
@@ -55,7 +54,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
       ))}
 
       <div className="group-label">分析与设置</div>
-      {NAV.slice(5).map((item) => (
+      {NAV.slice(4).map((item) => (
         <button
           key={item.key}
           className={`nav-item${route.name === item.key ? ' on' : ''}`}

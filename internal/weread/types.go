@@ -159,16 +159,17 @@ type Account struct {
 
 // ReadStats mirrors the subset of /readdata/detail the UI renders.
 type ReadStats struct {
-	Mode       string         `json:"mode"`
-	BaseTime   int64          `json:"baseTime"`
-	TotalTime  int64          `json:"totalReadTime"`
-	DailyTimes []int64        `json:"dailyReadTimes"`
-	ReadDays   int            `json:"readDays"`
-	DayAverage int64          `json:"dayAverageReadTime"`
-	Compare    float64        `json:"compare"`
-	Longest    []ReadSession  `json:"readLongest"`
-	Categories []ReadCategory `json:"preferCategory"`
-	Rank       int            `json:"rank"`
+	Mode         string         `json:"mode"`
+	BaseTime     int64          `json:"baseTime"`
+	TotalTime    int64          `json:"totalReadTime"`
+	DailyTimes   []int64        `json:"dailyReadTimes"`
+	DailyTimesAt []int64        `json:"dailyReadTimesAt,omitempty"`
+	ReadDays     int            `json:"readDays"`
+	DayAverage   int64          `json:"dayAverageReadTime"`
+	Compare      float64        `json:"compare"`
+	Longest      []ReadSession  `json:"readLongest"`
+	Categories   []ReadCategory `json:"preferCategory"`
+	Rank         int            `json:"rank"`
 }
 
 // ReadSession is one continuous reading stretch.

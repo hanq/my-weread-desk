@@ -25,7 +25,7 @@ export function MPView() {
     setLoading(true);
     api
       .mpArticles(active.id, 0)
-      .then(setArticles)
+      .then((rows) => setArticles(rows ?? []))
       .catch((e: unknown) => {
         setArticles([]);
         toast(String((e as Error).message || e), 'error');
@@ -53,8 +53,8 @@ export function MPView() {
             className="btn btn-ghost"
             onClick={() =>
               api
-                .mpArticles(active.id, articles.length)
-                .then((more) => setArticles((prev) => [...prev, ...more]))
+                .mpArticles(active.id, (articles ?? []).length)
+                .then((more) => setArticles((prev) => [...(prev ?? []), ...(more ?? [])]))
                 .catch((e: unknown) => toast(String((e as Error).message || e), 'error'))
             }
           >
@@ -83,13 +83,13 @@ export function MPView() {
                 <div className="empty" style={{ height: 180 }}>
                   <div className="spinner" />
                 </div>
-              ) : articles.length === 0 ? (
+              ) : (articles ?? []).length === 0 ? (
                 <div className="empty" style={{ height: 180 }}>
                   <p>暂无文章</p>
                 </div>
               ) : (
                 <div className="article-list">
-                  {articles.map((a) => (
+                  {(articles ?? []).map((a) => (
                     <div key={a.reviewId} className="article-row" onClick={() => void read(a)}>
                       {a.cover ? (
                         <img
@@ -135,7 +135,8 @@ function ArticleReader({ content, onClose, theme }: { content: ChapterContent; o
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const metrics = useMemo(() => measureBlocks(content.blocks), [content.blocks]);
+  const blocks = content.blocks ?? [];
+  const metrics = useMemo(() => measureBlocks(blocks), [blocks]);
 
   return (
     <div
@@ -177,7 +178,7 @@ function ArticleReader({ content, onClose, theme }: { content: ChapterContent; o
           ×
         </button>
         <h1 style={{ fontSize: '1.4em', margin: '0 0 1em', color: theme.headingColor }}>{content.title}</h1>
-        {content.blocks.map((b, i) => (
+        {blocks.map((b, i) => (
           <BlockView
             key={i}
             block={b}

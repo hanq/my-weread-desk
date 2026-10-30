@@ -245,19 +245,24 @@ func FirstString(values ...string) string {
 }
 
 // FlexSeries is a numeric series that WeRead spells either as an array of
-// numbers or as an object keyed by the bucket start. The object form is
-// returned in ascending key order so a chart stays chronological; keys that are
-// not numeric fall back to lexicographic order.
+// numbers or as an object keyed by the bucket start. The object form keeps the
+// keys alongside the values so a chart can label every bucket, and is returned
+// in ascending key order; keys that are not numeric fall back to lexicographic
+// order.
 //
 // /readdata/detail uses both spellings: readTimes is an object for every mode,
 // while dailyReadTimes is an object only for the annual period. A strict slice
 // field rejects the whole payload with a JSON type error.
-type FlexSeries []FlexInt
+type FlexSeries struct {
+	Values []int64
+	Times  []int64
+}
 
 func (f *FlexSeries) UnmarshalJSON(raw []byte) error {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {
-		*f = nil
+		f.Values = nil
+		f.Times = nil
 		return nil
 	}
 	switch raw[0] {
@@ -266,7 +271,11 @@ func (f *FlexSeries) UnmarshalJSON(raw []byte) error {
 		if err := json.Unmarshal(raw, &list); err != nil {
 			return err
 		}
-		*f = list
+		f.Values = make([]int64, len(list))
+		for i, v := range list {
+			f.Values[i] = v.Int64()
+		}
+		f.Times = nil
 		return nil
 	case '{':
 		var obj map[string]FlexInt
@@ -285,30 +294,40 @@ func (f *FlexSeries) UnmarshalJSON(raw []byte) error {
 			}
 			return keys[i] < keys[j]
 		})
-		out := make([]FlexInt, 0, len(keys))
+		f.Values = make([]int64, 0, len(keys))
+		f.Times = make([]int64, 0, len(keys))
 		for _, key := range keys {
-			out = append(out, obj[key])
+			f.Values = append(f.Values, obj[key].Int64())
+			// A non-numeric key cannot be turned into a date; keep a zero so
+			// the two slices stay aligned and the renderer skips the label.
+			at, err := strconv.ParseInt(key, 10, 64)
+			if err != nil {
+				at = 0
+			}
+			f.Times = append(f.Times, at)
 		}
-		*f = out
 		return nil
 	default:
 		var n FlexInt
 		if err := json.Unmarshal(raw, &n); err != nil {
 			return err
 		}
-		*f = []FlexInt{n}
+		f.Values = []int64{n.Int64()}
+		f.Times = nil
 		return nil
 	}
 }
 
-// Int64s returns the series as plain integers, or nil when it is empty.
+// Empty reports whether the series has no buckets.
+func (f FlexSeries) Empty() bool { return len(f.Values) == 0 }
+
+// Len returns the number of buckets.
+func (f FlexSeries) Len() int { return len(f.Values) }
+
+// Int64s returns the series values, or nil when it is empty.
 func (f FlexSeries) Int64s() []int64 {
-	if len(f) == 0 {
+	if len(f.Values) == 0 {
 		return nil
 	}
-	out := make([]int64, len(f))
-	for i, v := range f {
-		out[i] = v.Int64()
-	}
-	return out
+	return f.Values
 }

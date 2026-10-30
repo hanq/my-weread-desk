@@ -368,12 +368,21 @@ func (a *App) Stats(mode string, baseTime int64) (*weread.ReadStats, error) {
 func (a *App) MPArticles(accountID string, offset int) ([]weread.MPArticle, error) {
 	ctx, cancel := context.WithTimeout(a.ctxOrBackground(), 30*time.Second)
 	defer cancel()
-	return a.eink.MPArticles(ctx, accountID, offset)
+	articles, err := a.eink.MPArticles(ctx, accountID, offset)
+	// The renderer treats this as an array; a nil slice marshals as null and
+	// crashes it when the account has no articles yet.
+	if articles == nil {
+		articles = []weread.MPArticle{}
+	}
+	return articles, err
 }
 
 // OpenMPArticle loads an official-account article as blocks.
 func (a *App) OpenMPArticle(reviewID string) (*weread.ChapterContent, error) {
 	if cached, blocks, err := a.store.MPArticle(reviewID); err == nil {
+		if blocks == nil {
+			blocks = []weread.Block{}
+		}
 		return &weread.ChapterContent{
 			BookID:     cached.Account,
 			ChapterUID: 0,
@@ -391,6 +400,9 @@ func (a *App) OpenMPArticle(reviewID string) (*weread.ChapterContent, error) {
 		return nil, err
 	}
 	blocks := content.Parse(html, nil)
+	if blocks == nil {
+		blocks = []weread.Block{}
+	}
 	out := &weread.ChapterContent{
 		Title: title, Format: "mp", Blocks: blocks, FetchedAt: time.Now().Unix(),
 	}

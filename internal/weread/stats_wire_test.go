@@ -22,6 +22,15 @@ func TestStatsWireReadTimesObjectOrder(t *testing.T) {
 			t.Fatalf("dailyTimes = %v, want %v", got.DailyTimes, want)
 		}
 	}
+	wantAt := []int64{100, 200, 300}
+	if len(got.DailyTimesAt) != len(wantAt) {
+		t.Fatalf("dailyTimesAt = %v", got.DailyTimesAt)
+	}
+	for i := range wantAt {
+		if got.DailyTimesAt[i] != wantAt[i] {
+			t.Fatalf("dailyTimesAt = %v, want %v", got.DailyTimesAt, wantAt)
+		}
+	}
 }
 
 // The annual payload spells the series as an object. A strict []FlexInt field
@@ -37,6 +46,9 @@ func TestStatsWireDailyReadTimesObject(t *testing.T) {
 	got := wire.ToReadStats("annually")
 	if len(got.DailyTimes) != 2 || got.DailyTimes[0] != 10 || got.DailyTimes[1] != 20 {
 		t.Fatalf("dailyTimes = %v", got.DailyTimes)
+	}
+	if len(got.DailyTimesAt) != 2 || got.DailyTimesAt[0] != 100 || got.DailyTimesAt[1] != 200 {
+		t.Fatalf("dailyTimesAt = %v", got.DailyTimesAt)
 	}
 }
 
@@ -105,7 +117,20 @@ func TestFlexSeriesArrayAndNull(t *testing.T) {
 	if got := series.Int64s(); len(got) != 2 || got[0] != 3 || got[1] != 4 {
 		t.Fatalf("int64s = %v", got)
 	}
-	if err := json.Unmarshal([]byte(`null`), &series); err != nil || series != nil {
-		t.Fatalf("null: %v %v", series, err)
+	if series.Times != nil {
+		t.Fatalf("array must not carry times: %v", series.Times)
+	}
+	if err := json.Unmarshal([]byte(`null`), &series); err != nil || !series.Empty() {
+		t.Fatalf("null: %+v %v", series, err)
+	}
+}
+
+func TestFlexSeriesObjectKeepsTimes(t *testing.T) {
+	var series FlexSeries
+	if err := json.Unmarshal([]byte(`{"200":20,"100":10}`), &series); err != nil {
+		t.Fatalf("object: %v", err)
+	}
+	if series.Len() != 2 || series.Times[0] != 100 || series.Times[1] != 200 {
+		t.Fatalf("series = %+v", series)
 	}
 }

@@ -197,7 +197,7 @@ const handlers: Record<string, (...args: any[]) => any> = {
   Chapters: () => chapters,
   MutateShelf: () => undefined,
   Notes: () => [],
-  Stats: () => ({ mode: 'weekly', baseTime: 0, totalReadTime: 72300, dailyReadTimes: [3200, 5400, 0, 7300, 4200, 8800, 6100], readDays: 6, dayAverageReadTime: 10320, compare: 0.12, readLongest: books.slice(0, 5).map((b) => ({ bookId: b.id, title: b.title, author: b.author, seconds: 7200, date: 1760000000 })), preferCategory: [{ name: '社科', seconds: 32000, ratio: 0.44 }, { name: '历史', seconds: 21000, ratio: 0.29 }, { name: '文学', seconds: 12000, ratio: 0.17 }], rank: 128 }),
+  Stats: () => ({ mode: 'weekly', baseTime: 0, totalReadTime: 72300, dailyReadTimes: [3200, 5400, 0, 7300, 4200, 8800, 6100], dailyReadTimesAt: Array.from({ length: 7 }, (_, i) => Math.floor(Date.now() / 86400000) * 86400 - (6 - i) * 86400), readDays: 6, dayAverageReadTime: 10320, compare: 0.12, readLongest: books.slice(0, 5).map((b) => ({ bookId: b.id, title: b.title, author: b.author, seconds: 7200, date: 1760000000 })), preferCategory: [{ name: '社科', seconds: 32000, ratio: 0.44 }, { name: '历史', seconds: 21000, ratio: 0.29 }, { name: '文学', seconds: 12000, ratio: 0.17 }], rank: 128 }),
   DeviceStats: () => ({ client: 'MyWeReadDesk', deviceName: 'BOOX', deviceId: '...123456', totalSeconds: 0, todaySeconds: 0, daily: [] }),
   MPArticles: () => [],
   OpenMPArticle: () => ({ blocks: [] }),

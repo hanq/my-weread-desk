@@ -83,12 +83,18 @@ func (w StatsWire) ToReadStats(mode string) *ReadStats {
 	// readTimes is present for every period; the annual period additionally
 	// carries a finer dailyReadTimes breakdown, so it is only a fallback.
 	series := w.ReadTimes
-	if len(series) == 0 {
+	if series.Empty() {
 		series = w.DailyReadTimes
 	}
 	out.DailyTimes = series.Int64s()
 	if out.DailyTimes == nil {
 		out.DailyTimes = []int64{}
+	}
+	// The keys are bucket starts in unix seconds; the chart uses them for the
+	// date labels under each bar. Array-only payloads carry no keys, so the
+	// renderer falls back to unlabeled bars.
+	if len(series.Times) == len(series.Values) && len(series.Times) > 0 {
+		out.DailyTimesAt = append([]int64(nil), series.Times...)
 	}
 
 	// The overall payload omits dayAverageReadTime; derive it so the card does
