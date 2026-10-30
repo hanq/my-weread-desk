@@ -120,7 +120,7 @@ func (s *Session) applyEinkHeaders() {
 		s.einkClient.SetHeader(k, v)
 	}
 	if c := s.creds; c != nil && c.HasToken() {
-		s.einkClient.SetHeader("vid", c.VID)
+		s.einkClient.SetHeader("vid", weread.NormalizeVID(c.VID))
 		s.einkClient.SetHeader("accessToken", c.AccessToken)
 	} else {
 		s.einkClient.SetHeader("vid", "")
@@ -163,11 +163,11 @@ func (s *Session) refreshEinkLocked(ctx context.Context) error {
 		"deviceType":   device.Type,
 	}
 	var out struct {
-		VID          any    `json:"vid"`
-		AccessToken  string `json:"accessToken"`
-		RefreshToken string `json:"refreshToken"`
-		ErrCode      int    `json:"errCode"`
-		ErrMsg       string `json:"errMsg"`
+		VID          weread.FlexString `json:"vid"`
+		AccessToken  string            `json:"accessToken"`
+		RefreshToken string            `json:"refreshToken"`
+		ErrCode      int               `json:"errCode"`
+		ErrMsg       string            `json:"errMsg"`
 	}
 	if err := s.einkClient.JSON(ctx, httpx.Request{
 		URL:    einkBase + "/login",
@@ -176,7 +176,7 @@ func (s *Session) refreshEinkLocked(ctx context.Context) error {
 	}, &out); err != nil {
 		return err
 	}
-	if out.AccessToken == "" || out.VID == nil {
+	if out.AccessToken == "" || out.VID.String() == "" {
 		return fmt.Errorf("令牌续期失败: %s", out.ErrMsg)
 	}
 
@@ -185,7 +185,7 @@ func (s *Session) refreshEinkLocked(ctx context.Context) error {
 	if out.RefreshToken != "" {
 		next.RefreshToken = out.RefreshToken
 	}
-	next.VID = fmt.Sprint(out.VID)
+	next.VID = weread.NormalizeVID(out.VID.String())
 	next.Cookies = map[string]string{}
 	for k, v := range c.Cookies {
 		next.Cookies[k] = v

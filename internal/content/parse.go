@@ -139,11 +139,25 @@ func (p *parser) walkElement(n *html.Node) {
 
 func (p *parser) addParagraph(n *html.Node) {
 	text := collapseWhitespace(inlineText(n))
-	if text == "" {
-		// A paragraph containing only images still matters.
-		if img := firstImage(n); img != nil {
+	images := collectImages(n)
+	if len(images) > 0 {
+		// Figures often wrap the image in the same paragraph as a literal
+		// placeholder ("[图片]") or a caption. The placeholder is noise and must
+		// not hide the image, which is what happened when any text made the
+		// parser take the text branch and ignore the <img>.
+		if text != "" && !isImagePlaceholder(text) {
+			kind := "para"
+			if hasClass(n, "quote") || hasClass(n, "blockquote") {
+				kind = "quote"
+			}
+			p.add(weread.Block{Kind: kind, Text: text, Class: classHint(n)})
+		}
+		for _, img := range images {
 			p.addImage(img)
 		}
+		return
+	}
+	if text == "" {
 		return
 	}
 	kind := "para"
@@ -154,11 +168,19 @@ func (p *parser) addParagraph(n *html.Node) {
 }
 
 func (p *parser) addImage(n *html.Node) {
-	src := firstOf(attr(n, "src"), attr(n, "data-src"))
+	src := firstOf(attr(n, "src"), attr(n, "data-src"), attr(n, "data-original"), attr(n, "data-lazy-src"))
+	if src == "" {
+		if srcset := attr(n, "srcset"); srcset != "" {
+			candidate := strings.TrimSpace(strings.Split(srcset, ",")[0])
+			if fields := strings.Fields(candidate); len(fields) > 0 {
+				src = fields[0]
+			}
+		}
+	}
 	if src == "" {
 		return
 	}
-	p.addImageSrc(src, attr(n, "alt"))
+	p.addImageSrc(src, firstOf(attr(n, "alt"), attr(n, "title")))
 }
 
 func (p *parser) addImageSrc(src, alt string) {
@@ -238,16 +260,36 @@ func collect(n *html.Node, kind atom.Atom) []*html.Node {
 	return out
 }
 
-func firstImage(n *html.Node) *html.Node {
-	if n.Type == html.ElementNode && (n.DataAtom == atom.Img || n.DataAtom == atom.Image) {
-		return n
-	}
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		if found := firstImage(c); found != nil {
-			return found
+func collectImages(n *html.Node) []*html.Node {
+	var out []*html.Node
+	var walk func(*html.Node)
+	walk = func(node *html.Node) {
+		if node.Type == html.ElementNode {
+			switch node.DataAtom {
+			case atom.Img, atom.Image:
+				out = append(out, node)
+				return
+			case atom.Script, atom.Style:
+				return
+			}
+		}
+		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
 		}
 	}
-	return nil
+	walk(n)
+	return out
+}
+
+// isImagePlaceholder reports whether text is only the reader's stand-in marker
+// for an image (for example "[图片]" or "插图"), not a real caption.
+func isImagePlaceholder(text string) bool {
+	t := strings.ToLower(strings.TrimSpace(strings.Trim(text, "[]【】()（）<>：:")))
+	switch t {
+	case "图片", "图", "插图", "配图", "image", "img", "photo", "picture":
+		return true
+	}
+	return false
 }
 
 func hasBlockChildren(n *html.Node) bool {

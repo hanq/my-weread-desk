@@ -546,19 +546,28 @@ func (c *Client) ReportRead(ctx context.Context, r protocol.ReadReport) error {
 // DownloadResource fetches a chapter resource archive (images, fonts) from the
 // WeRead CDN. The signed redirect target is followed even though it leaves the
 // weread.qq.com host.
+// DownloadResource fetches a chapter resource archive using the site root as
+// the referer. Chapter assets should use DownloadResourceAs: the CDN checks the
+// reader page referer, and a wrong one yields 403 with an empty image map.
 func (c *Client) DownloadResource(ctx context.Context, rawURL string) ([]byte, error) {
+	return c.DownloadResourceAs(ctx, rawURL, session.WebBase()+"/")
+}
+
+// DownloadResourceAs fetches a resource with an explicit Referer.
+func (c *Client) DownloadResourceAs(ctx context.Context, rawURL, referer string) ([]byte, error) {
 	if rawURL == "" {
 		return nil, errors.New("空的资源地址")
 	}
-	if !strings.HasPrefix(rawURL, "https://") {
-		rawURL = "https://" + strings.TrimPrefix(rawURL, "//")
+	rawURL = normalizeResourceURL(rawURL)
+	if referer == "" {
+		referer = session.WebBase() + "/"
 	}
 	var data []byte
 	err := c.withRetry(ctx, func() error {
 		resp, err := c.sess.Web().Do(ctx, httpx.Request{
 			URL:     rawURL,
 			Method:  "GET",
-			Referer: session.WebBase() + "/",
+			Referer: referer,
 		})
 		if err != nil {
 			return err
@@ -574,4 +583,20 @@ func (c *Client) DownloadResource(ctx context.Context, rawURL string) ([]byte, e
 	}
 	c.persistCookies()
 	return data, nil
+}
+
+// normalizeResourceURL accepts absolute, protocol-relative and site-relative
+// resource URLs, which all appear in WeRead catalogues.
+func normalizeResourceURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	switch {
+	case strings.HasPrefix(raw, "//"):
+		return "https:" + raw
+	case strings.HasPrefix(raw, "http://"), strings.HasPrefix(raw, "https://"):
+		return raw
+	case strings.HasPrefix(raw, "/"):
+		return "https://weread.qq.com" + raw
+	default:
+		return "https://weread.qq.com/" + raw
+	}
 }

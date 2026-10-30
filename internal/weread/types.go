@@ -14,13 +14,33 @@ type Book struct {
 	Finished  bool    `json:"finished"`
 	Secret    bool    `json:"secret"`
 	IsMP      bool    `json:"isMp"`
-	LastRead  int64   `json:"lastRead"`
+	// IsAudio marks a shelf entry that is an audiobook album. The reader
+	// cannot open these: they have tracks, not chapters, and the artwork is
+	// already carried by Cover.
+	IsAudio    bool  `json:"isAudio,omitempty"`
+	TrackCount int   `json:"trackCount,omitempty"`
+	LastRead   int64 `json:"lastRead"`
+	// GroupID is the shelf folder the entry belongs to. WeRead calls these
+	// archives; an empty value means "ungrouped".
+	GroupID   string  `json:"groupId,omitempty"`
+	GroupName string  `json:"groupName,omitempty"`
 	Publisher string  `json:"publisher,omitempty"`
 	PublishAt string  `json:"publishAt,omitempty"`
 	ISBN      string  `json:"isbn,omitempty"`
 	Price     float64 `json:"price,omitempty"`
 	Paid      bool    `json:"paid"`
 	UpdateAt  int64   `json:"updateAt"`
+}
+
+// ShelfGroup is a shelf folder. Source distinguishes folders mirrored from
+// the WeRead account ("cloud") from folders created only in this app
+// ("local"); a local assignment survives a shelf sync, a cloud one does not.
+type ShelfGroup struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Source  string   `json:"source"`
+	BookIDs []string `json:"bookIds,omitempty"`
+	Sort    int      `json:"sort"`
 }
 
 // Chapter is one table-of-contents entry.

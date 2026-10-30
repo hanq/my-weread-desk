@@ -42,6 +42,14 @@ func IsAuthExpired(err error) bool {
 	return false
 }
 
+// IsNoSuchUser reports the -2010 identity mismatch. A stale or malformed vid
+// produces this code and can be repaired by a token refresh, so the E-Ink
+// client treats it like an expired session once.
+func IsNoSuchUser(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.Code == ErrNoSuchUser
+}
+
 // ErrNotEntitled is returned when the account may not read a chapter.
 var ErrNotEntitled = errors.New("当前账号无权阅读该章节")
 

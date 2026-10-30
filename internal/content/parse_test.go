@@ -59,6 +59,40 @@ func TestParseUnresolvedImageKeepsPlaceholder(t *testing.T) {
 	}
 }
 
+func TestParseImageInsideParagraphWithPlaceholder(t *testing.T) {
+	html := `<p>[图片]<img src="https://res.weread.qq.com/wrepub/epub_1_2" alt="插图"/></p>`
+	blocks := Parse(html, func(src string) (string, bool) {
+		if src == "https://res.weread.qq.com/wrepub/epub_1_2" {
+			return "/media/b/epub_1_2.png", true
+		}
+		return "", false
+	})
+	if len(blocks) != 1 || blocks[0].Kind != "image" || blocks[0].Src != "/media/b/epub_1_2.png" {
+		t.Fatalf("blocks = %+v", blocks)
+	}
+}
+
+func TestParseCaptionAndImage(t *testing.T) {
+	blocks := Parse(`<p>看图：<img src="x" alt="插图"/></p>`, func(string) (string, bool) {
+		return "/media/x.png", true
+	})
+	if len(blocks) != 2 || blocks[0].Text != "看图：" || blocks[1].Kind != "image" {
+		t.Fatalf("blocks = %+v", blocks)
+	}
+}
+
+func TestParseSrcsetImage(t *testing.T) {
+	blocks := Parse(`<img srcset="https://a/1.png 1x, https://a/2.png 2x" alt="图"/>`, func(src string) (string, bool) {
+		if src == "https://a/1.png" {
+			return "/media/1.png", true
+		}
+		return "", false
+	})
+	if len(blocks) != 1 || blocks[0].Src != "/media/1.png" {
+		t.Fatalf("blocks = %+v", blocks)
+	}
+}
+
 func TestParseListsAndTables(t *testing.T) {
 	html := `<ul><li>甲</li><li>乙</li></ul>
 		<table><tr><td>1990</td><td>3.8</td></tr><tr><th>年份</th><th>增速</th></tr></table>`

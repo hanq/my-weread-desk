@@ -2,7 +2,9 @@ package web
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -114,6 +116,60 @@ func TestParseTarExtractsRegularFiles(t *testing.T) {
 	}
 	if string(files["notes.txt"]) != "hello" {
 		t.Errorf("text bytes = %q", files["notes.txt"])
+	}
+}
+
+func TestParseTarReadsGzipArchive(t *testing.T) {
+	var raw bytes.Buffer
+	tw := tar.NewWriter(&raw)
+	payload := []byte("\x89PNG\r\n\x1a\nxxx")
+	if err := tw.WriteHeader(&tar.Header{Name: "36/epub_9_1.png", Mode: 0o644, Size: int64(len(payload)), Typeflag: tar.TypeReg}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	tw.Close()
+
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	if _, err := zw.Write(raw.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := ParseTar(gz.Bytes())
+	if err != nil {
+		t.Fatalf("ParseTar(gzip): %v", err)
+	}
+	if string(files["epub_9_1.png"]) != string(payload) {
+		t.Fatalf("image bytes = %q", files["epub_9_1.png"])
+	}
+}
+
+func TestParseTarReadsZipArchive(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	payload := []byte("\x89PNG\r\n\x1a\nxxx")
+	w, err := zw.Create("36/epub_9_2.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := ParseTar(buf.Bytes())
+	if err != nil {
+		t.Fatalf("ParseTar(zip): %v", err)
+	}
+	if string(files["epub_9_2.png"]) != string(payload) {
+		t.Fatalf("image bytes = %q", files["epub_9_2.png"])
 	}
 }
 

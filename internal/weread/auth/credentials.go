@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"my-weread-desk/internal/weread"
 )
 
 // Credentials is everything needed to talk to both WeRead channels.
@@ -71,6 +73,12 @@ func NewStore(dir string) (*Store, error) {
 		}
 		if s.creds.Fingerprint == "" {
 			s.creds.Fingerprint = s.fp
+		}
+		// Older builds formatted a numeric vid decoded as float64, leaving
+		// values such as "5.8328018e+07". The E-Ink API then answers -2010.
+		// Repair the stored identity before the first request.
+		if repairCredentials(s.creds) {
+			_ = s.Save(s.creds)
 		}
 	}
 	return s, nil
@@ -146,6 +154,36 @@ func (s *Store) DeviceID() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.deviceID
+}
+
+// repairCredentials normalizes a vid that older builds rendered through
+// fmt.Sprint on a float64. It also keeps the wr_vid cookie in sync so the web
+// fallback does not keep sending the malformed identity.
+func repairCredentials(c *Credentials) bool {
+	if c == nil {
+		return false
+	}
+	changed := false
+	vid := weread.NormalizeVID(c.VID)
+	if c.Cookies != nil {
+		cookieVID := weread.NormalizeVID(c.Cookies["wr_vid"])
+		if vid == "" {
+			vid = cookieVID
+		}
+		if cookieVID != "" && cookieVID != c.Cookies["wr_vid"] {
+			c.Cookies["wr_vid"] = cookieVID
+			changed = true
+		}
+	}
+	if vid != "" && vid != c.VID {
+		c.VID = vid
+		changed = true
+	}
+	if c.Cookies != nil && c.VID != "" && c.Cookies["wr_vid"] != c.VID {
+		c.Cookies["wr_vid"] = c.VID
+		changed = true
+	}
+	return changed
 }
 
 // Fingerprint is the browser fingerprint cookie value.

@@ -2,7 +2,9 @@ package web
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -273,6 +275,24 @@ func ParseTar(data []byte) (map[string][]byte, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
+	// The resource pack is sometimes served gzip-compressed. tar.NewReader
+	// would stop at the first invalid header and silently yield no images, so
+	// detect the gzip magic and decompress first.
+	if len(data) > 2 && data[0] == 0x1f && data[1] == 0x8b {
+		zr, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, fmt.Errorf("gzip: %w", err)
+		}
+		defer zr.Close()
+		plain, err := io.ReadAll(io.LimitReader(zr, 256<<20))
+		if err != nil {
+			return nil, fmt.Errorf("gzip: %w", err)
+		}
+		data = plain
+	}
+	if len(data) > 4 && string(data[:4]) == "PK\x03\x04" {
+		return parseZip(data)
+	}
 	out := map[string][]byte{}
 	tr := tar.NewReader(bytes.NewReader(data))
 	for {
@@ -300,6 +320,35 @@ func ParseTar(data []byte) (map[string][]byte, error) {
 	return out, nil
 }
 
+// parseZip handles resource packs delivered as zip archives.
+func parseZip(data []byte) (map[string][]byte, error) {
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, fmt.Errorf("zip: %w", err)
+	}
+	out := map[string][]byte{}
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			continue
+		}
+		buf, err := io.ReadAll(io.LimitReader(rc, 32<<20))
+		_ = rc.Close()
+		if err != nil {
+			continue
+		}
+		name := path.Base(strings.ReplaceAll(f.Name, "\\", "/"))
+		if name == "" || name == "." || name == "/" {
+			continue
+		}
+		out[name] = buf
+	}
+	return out, nil
+}
+
 // MediaName normalises an image reference to the archive base name.
 func MediaName(src string) string {
 	if src == "" {
@@ -308,6 +357,9 @@ func MediaName(src string) string {
 	u, err := url.Parse(src)
 	if err == nil && u.Path != "" {
 		src = u.Path
+	}
+	if decoded, derr := url.PathUnescape(src); derr == nil {
+		src = decoded
 	}
 	return path.Base(strings.ReplaceAll(src, "\\", "/"))
 }
@@ -323,6 +375,8 @@ func ImageExt(data []byte) string {
 		return ".gif"
 	case len(data) > 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WEBP":
 		return ".webp"
+	case len(data) > 12 && string(data[4:8]) == "ftyp" && (string(data[8:12]) == "avif" || string(data[8:12]) == "avis"):
+		return ".avif"
 	case bytes.HasPrefix(data, []byte("BM")):
 		return ".bmp"
 	case bytes.HasPrefix(data, []byte("<svg")), bytes.HasPrefix(data, []byte("<?xml")):
@@ -342,6 +396,8 @@ func ImageMime(ext string) string {
 		return "image/gif"
 	case ".webp":
 		return "image/webp"
+	case ".avif":
+		return "image/avif"
 	case ".bmp":
 		return "image/bmp"
 	case ".svg":

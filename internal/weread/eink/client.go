@@ -40,7 +40,7 @@ func (c *Client) call(ctx context.Context, method, path string, query url.Values
 // and retries exactly once.
 func (c *Client) withAuthRetry(ctx context.Context, fn func() error) error {
 	err := fn()
-	if err == nil || !weread.IsAuthExpired(err) {
+	if err == nil || (!weread.IsAuthExpired(err) && !weread.IsNoSuchUser(err)) {
 		return err
 	}
 	if rerr := c.sess.RefreshEink(ctx); rerr != nil {
@@ -50,6 +50,13 @@ func (c *Client) withAuthRetry(ctx context.Context, fn func() error) error {
 }
 
 // ---------------------------------------------------------------- shelf
+
+type shelfArchiveWire struct {
+	ArchiveID weread.FlexString   `json:"archiveId"`
+	ID        weread.FlexString   `json:"id"`
+	Name      string              `json:"name"`
+	BookIDs   []weread.FlexString `json:"bookIds"`
+}
 
 type shelfWire struct {
 	Books []struct {
@@ -82,31 +89,37 @@ type shelfWire struct {
 			TrackCount weread.FlexInt    `json:"trackCount"`
 		} `json:"albumInfo"`
 	} `json:"albums"`
-	BookCount weread.FlexInt `json:"bookCount"`
+	// The service has shipped the folder list under both spellings, so both are
+	// decoded and merged rather than failing on whichever one is absent.
+	Archive   []shelfArchiveWire `json:"archive"`
+	Archives  []shelfArchiveWire `json:"archives"`
+	BookCount weread.FlexInt     `json:"bookCount"`
 }
 
-// Shelf returns the account bookshelf. Audiobooks are returned as MP=false
-// entries with an empty author so the UI can show them without pretending they
-// are readable text; the reader filters them out.
-func (c *Client) Shelf(ctx context.Context) ([]weread.Book, error) {
+// ShelfSnapshot returns the shelf entries plus the folder membership reported
+// by /shelf/sync. The folder list is optional: an account without folders, or
+// a response that omits it, still yields a usable book list.
+func (c *Client) ShelfSnapshot(ctx context.Context) ([]weread.Book, []weread.ShelfGroup, error) {
 	var raw shelfWire
 	err := c.withAuthRetry(ctx, func() error {
 		return c.call(ctx, "GET", "/shelf/sync", nil, nil, &raw)
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if raw.Books == nil && raw.BookCount.Int64() > 0 {
-		return nil, fmt.Errorf("%w: 书架响应缺少 books 字段", weread.ErrProtocolChanged)
+		return nil, nil, fmt.Errorf("%w: 书架响应缺少 books 字段", weread.ErrProtocolChanged)
 	}
 
-	out := make([]weread.Book, 0, len(raw.Books)+1)
+	groups, membership := normaliseArchives(raw.Archive, raw.Archives)
+
+	out := make([]weread.Book, 0, len(raw.Books)+len(raw.Albums)+1)
 	for _, b := range raw.Books {
 		id := b.BookID.String()
 		if id == "" {
 			continue
 		}
-		out = append(out, weread.Book{
+		book := weread.Book{
 			ID:       id,
 			Title:    b.Title,
 			Author:   b.Author,
@@ -120,7 +133,34 @@ func (c *Client) Shelf(ctx context.Context) ([]weread.Book, error) {
 			Secret:   b.Secret.Int64() == 1,
 			LastRead: b.ReadUpdateTime.Int64(),
 			UpdateAt: b.UpdateTime.Int64(),
-		})
+		}
+		if g, ok := membership[id]; ok {
+			book.GroupID = g.ID
+			book.GroupName = g.Name
+		}
+		out = append(out, book)
+	}
+	// Albums are audiobooks. They are shelf entries and the account counts them
+	// as such, so the shelf must show them; IsAudio tells the UI not to open the
+	// text reader for them.
+	for _, a := range raw.Albums {
+		id := a.AlbumInfo.AlbumID.String()
+		if id == "" {
+			continue
+		}
+		book := weread.Book{
+			ID:         id,
+			Title:      a.AlbumInfo.Name,
+			Author:     a.AlbumInfo.AuthorName,
+			Cover:      a.AlbumInfo.Cover,
+			IsAudio:    true,
+			TrackCount: int(a.AlbumInfo.TrackCount.Int64()),
+		}
+		if g, ok := membership[id]; ok {
+			book.GroupID = g.ID
+			book.GroupName = g.Name
+		}
+		out = append(out, book)
 	}
 	if raw.MP != nil && raw.MP.BookID != "" {
 		out = append(out, weread.Book{
@@ -131,7 +171,77 @@ func (c *Client) Shelf(ctx context.Context) ([]weread.Book, error) {
 			IsMP:   true,
 		})
 	}
-	return out, nil
+	// Fold albums into the folder membership so a folder containing only
+	// audiobooks is not reported as empty.
+	for i := range groups {
+		for _, b := range out {
+			if b.GroupID != groups[i].ID {
+				continue
+			}
+			groups[i].BookIDs = appendUnique(groups[i].BookIDs, b.ID)
+		}
+	}
+	return out, groups, nil
+}
+
+// Shelf returns just the entries, preserving the previous call shape.
+func (c *Client) Shelf(ctx context.Context) ([]weread.Book, error) {
+	books, _, err := c.ShelfSnapshot(ctx)
+	return books, err
+}
+
+// normaliseArchives merges the two folder spellings and builds a bookId → folder
+// lookup. Duplicate folder ids keep the first non-empty name.
+func normaliseArchives(lists ...[]shelfArchiveWire) ([]weread.ShelfGroup, map[string]weread.ShelfGroup) {
+	var groups []weread.ShelfGroup
+	index := map[string]int{}
+	for _, list := range lists {
+		for _, a := range list {
+			id := firstNonEmpty(a.ArchiveID.String(), a.ID.String())
+			if id == "" {
+				continue
+			}
+			if at, ok := index[id]; ok {
+				if groups[at].Name == "" {
+					groups[at].Name = a.Name
+				}
+				continue
+			}
+			g := weread.ShelfGroup{ID: id, Name: a.Name, Source: "cloud", Sort: len(groups)}
+			for _, bid := range a.BookIDs {
+				if v := bid.String(); v != "" {
+					g.BookIDs = append(g.BookIDs, v)
+				}
+			}
+			index[id] = len(groups)
+			groups = append(groups, g)
+		}
+	}
+	membership := map[string]weread.ShelfGroup{}
+	for _, g := range groups {
+		for _, bid := range g.BookIDs {
+			membership[bid] = g
+		}
+	}
+	return groups, membership
+}
+
+func appendUnique(list []string, v string) []string {
+	for _, existing := range list {
+		if existing == v {
+			return list
+		}
+	}
+	return append(list, v)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------- search
@@ -488,28 +598,9 @@ func (c *Client) Notes(ctx context.Context, bookID string) ([]weread.Note, error
 
 // ---------------------------------------------------------------- stats
 
-type statsWire struct {
-	BaseTime       weread.FlexInt   `json:"baseTime"`
-	TotalReadTime  weread.FlexInt   `json:"totalReadTime"`
-	ReadDays       weread.FlexInt   `json:"readDays"`
-	DayAverage     weread.FlexInt   `json:"dayAverageReadTime"`
-	Compare        weread.FlexFloat `json:"compare"`
-	Rank           weread.FlexInt   `json:"rank"`
-	DailyReadTimes []weread.FlexInt `json:"dailyReadTimes"`
-	ReadLongest    []struct {
-		BookID   weread.FlexString `json:"bookId"`
-		Title    string            `json:"title"`
-		Author   string            `json:"author"`
-		ReadTime weread.FlexInt    `json:"readTime"`
-		Date     weread.FlexInt    `json:"date"`
-	} `json:"readLongest"`
-	PreferCategory []struct {
-		CategoryName string           `json:"categoryName"`
-		ReadTime     weread.FlexInt   `json:"readTime"`
-		Ratio        weread.FlexFloat `json:"ratio"`
-		CategoryType int              `json:"categoryType"`
-	} `json:"preferCategory"`
-}
+// statsWire is the shared /readdata/detail payload. The conversion lives in
+// the weread package so the E-Ink and Web paths cannot drift apart.
+type statsWire = weread.StatsWire
 
 // Stats returns reading statistics for a period.
 func (c *Client) Stats(ctx context.Context, mode string, baseTime int64) (*weread.ReadStats, error) {
@@ -526,30 +617,7 @@ func (c *Client) Stats(ctx context.Context, mode string, baseTime int64) (*werea
 	if err != nil {
 		return nil, err
 	}
-	out := &weread.ReadStats{
-		Mode:       mode,
-		BaseTime:   raw.BaseTime.Int64(),
-		TotalTime:  raw.TotalReadTime.Int64(),
-		ReadDays:   int(raw.ReadDays.Int64()),
-		DayAverage: raw.DayAverage.Int64(),
-		Compare:    raw.Compare.Float64(),
-		Rank:       int(raw.Rank.Int64()),
-	}
-	for _, d := range raw.DailyReadTimes {
-		out.DailyTimes = append(out.DailyTimes, d.Int64())
-	}
-	for _, s := range raw.ReadLongest {
-		out.Longest = append(out.Longest, weread.ReadSession{
-			BookID: s.BookID.String(), Title: s.Title, Author: s.Author,
-			Seconds: s.ReadTime.Int64(), Date: s.Date.Int64(),
-		})
-	}
-	for _, cat := range raw.PreferCategory {
-		out.Categories = append(out.Categories, weread.ReadCategory{
-			Name: cat.CategoryName, Seconds: cat.ReadTime.Int64(), Ratio: cat.Ratio.Float64(),
-		})
-	}
-	return out, nil
+	return raw.ToReadStats(mode), nil
 }
 
 // ---------------------------------------------------------------- shelf edits

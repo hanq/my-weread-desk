@@ -5,8 +5,14 @@
 package device
 
 const (
-	// Name is the device name sent on login.
+	// Name is the device name sent on login/refresh. It stays the official
+	// E-Ink model so the token is not treated as a different device.
 	Name = "BOOX"
+	// ClientName is the product identifier shown in the desktop UI and in the
+	// local per-device reading statistics. It is deliberately not sent to
+	// WeRead: UA, deviceType and deviceId are protocol identity, while this
+	// name only labels the local client.
+	ClientName = "MyWeReadDesk"
 	// Type is the Android device class the official client reports.
 	Type = 3
 	// AppVersion is the official client version.
