@@ -26,9 +26,17 @@ func Parse(fragment string, resolve ImageResolver) []weread.Block {
 	if body == nil {
 		return nil
 	}
-	p := &parser{resolve: resolve}
+	p := &parser{resolve: resolve, seen: map[string]bool{}}
 	p.walkChildren(body)
-	return normalise(p.blocks)
+	blocks := normalise(p.blocks)
+	if len(blocks) == 0 {
+		// A malformed fragment may still carry text outside the elements the
+		// parser knows. Keep that text instead of reporting an empty chapter.
+		if text := collapseWhitespace(inlineText(body)); text != "" {
+			blocks = []weread.Block{{Kind: "para", Text: text}}
+		}
+	}
+	return blocks
 }
 
 func findBody(n *html.Node) *html.Node {
@@ -46,6 +54,7 @@ func findBody(n *html.Node) *html.Node {
 type parser struct {
 	blocks  []weread.Block
 	resolve ImageResolver
+	seen    map[string]bool
 }
 
 func (p *parser) walkChildren(n *html.Node) {
@@ -78,7 +87,13 @@ func (p *parser) walk(n *html.Node) {
 
 func (p *parser) walkElement(n *html.Node) {
 	switch n.DataAtom {
-	case atom.Script, atom.Style, atom.Head, atom.Noscript, atom.Iframe, atom.Svg:
+	case atom.Script, atom.Style, atom.Head, atom.Noscript, atom.Iframe:
+		return
+	case atom.Svg, atom.ForeignObject:
+		// Fixed-layout EPUBs often wrap a whole page in SVG. Treating the
+		// wrapper as opaque drops both <image> covers and <text> pages, which
+		// is exactly how a new picture book ends up with zero blocks.
+		p.walkChildren(n)
 		return
 	case atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6:
 		level := int(n.Data[1] - '0')
@@ -120,9 +135,11 @@ func (p *parser) walkElement(n *html.Node) {
 		p.walkTable(n)
 		return
 	case atom.P:
+		p.addBackgroundImage(n)
 		p.addParagraph(n)
 		return
-	case atom.Div, atom.Section, atom.Article, atom.Main, atom.Header, atom.Footer, atom.Aside, atom.Figcaption, atom.Li:
+	case atom.Div, atom.Section, atom.Article, atom.Main, atom.Header, atom.Footer, atom.Aside, atom.Figcaption, atom.Figure, atom.Li:
+		p.addBackgroundImage(n)
 		if hasBlockChildren(n) {
 			p.walkChildren(n)
 			return
@@ -130,6 +147,7 @@ func (p *parser) walkElement(n *html.Node) {
 		p.addParagraph(n)
 		return
 	case atom.Body:
+		p.addBackgroundImage(n)
 		p.walkChildren(n)
 		return
 	}
@@ -168,7 +186,36 @@ func (p *parser) addParagraph(n *html.Node) {
 }
 
 func (p *parser) addImage(n *html.Node) {
-	src := firstOf(attr(n, "src"), attr(n, "data-src"), attr(n, "data-original"), attr(n, "data-lazy-src"))
+	// WeChat article images are lazy loaded: the real URL is usually in
+	// data-src while src is a data: placeholder. Prefer a remote candidate
+	// before falling back to an inline image.
+	candidates := []string{
+		attr(n, "data-src"),
+		attr(n, "data-original"),
+		attr(n, "data-lazy-src"),
+		// SVG images use href/xlink:href instead of src. They are usually
+		// wrapped in <g>, so this path is reached through collectImages rather
+		// than the direct <image> branch.
+		attr(n, "xlink:href"),
+		attr(n, "href"),
+		attr(n, "src"),
+	}
+	src := ""
+	inline := ""
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if strings.HasPrefix(candidate, "data:") {
+			if inline == "" {
+				inline = candidate
+			}
+			continue
+		}
+		src = candidate
+		break
+	}
 	if src == "" {
 		if srcset := attr(n, "srcset"); srcset != "" {
 			candidate := strings.TrimSpace(strings.Split(srcset, ",")[0])
@@ -178,12 +225,25 @@ func (p *parser) addImage(n *html.Node) {
 		}
 	}
 	if src == "" {
+		src = inline
+	}
+	if src == "" {
 		return
 	}
 	p.addImageSrc(src, firstOf(attr(n, "alt"), attr(n, "title")))
 }
 
 func (p *parser) addImageSrc(src, alt string) {
+	if src == "" {
+		return
+	}
+	if p.seen == nil {
+		p.seen = map[string]bool{}
+	}
+	if p.seen[src] {
+		return
+	}
+	p.seen[src] = true
 	if strings.HasPrefix(src, "data:") {
 		p.add(weread.Block{Kind: "image", Src: src, Alt: alt})
 		return
@@ -195,6 +255,48 @@ func (p *parser) addImageSrc(src, alt string) {
 		}
 	}
 	p.add(weread.Block{Kind: "image", Alt: firstOf(alt, "图片"), Class: "missing"})
+}
+
+// addBackgroundImage recovers page images that fixed-layout EPUBs expose as a
+// CSS background instead of an <img>. It is deliberately conservative: text-
+// bearing elements and non-cover containers are skipped so a decorative body
+// texture does not become a block in every chapter.
+func (p *parser) addBackgroundImage(n *html.Node) {
+	style := attr(n, "style")
+	if style == "" {
+		return
+	}
+	src := backgroundImageSrc(style)
+	if src == "" {
+		return
+	}
+	if strings.TrimSpace(inlineText(n)) != "" {
+		return
+	}
+	if hasBlockChildren(n) && !strings.Contains(strings.ToLower(attr(n, "class")), "cover") {
+		return
+	}
+	p.addImageSrc(src, attr(n, "aria-label"))
+}
+
+func backgroundImageSrc(style string) string {
+	lower := strings.ToLower(style)
+	idx := strings.Index(lower, "background")
+	if idx < 0 {
+		return ""
+	}
+	rest := style[idx:]
+	urlAt := strings.Index(strings.ToLower(rest), "url(")
+	if urlAt < 0 {
+		return ""
+	}
+	rest = rest[urlAt+4:]
+	end := strings.IndexByte(rest, ')')
+	if end < 0 {
+		return ""
+	}
+	src := strings.Trim(strings.TrimSpace(rest[:end]), `"'`)
+	return html.UnescapeString(src)
 }
 
 func (p *parser) walkList(n *html.Node) {
@@ -425,7 +527,12 @@ func endsSentence(s string) bool {
 
 func attr(n *html.Node, key string) string {
 	for _, a := range n.Attr {
-		if strings.EqualFold(a.Key, key) || strings.EqualFold(a.Namespace+a.Key, key) {
+		// SVG attributes are namespaced (xlink:href becomes
+		// {Namespace:"xlink", Key:"href"}), while HTML attributes are not.
+		// Accept both the colon form and the old concatenated form.
+		if strings.EqualFold(a.Key, key) ||
+			strings.EqualFold(a.Namespace+a.Key, key) ||
+			(a.Namespace != "" && strings.EqualFold(a.Namespace+":"+a.Key, key)) {
 			return a.Val
 		}
 	}

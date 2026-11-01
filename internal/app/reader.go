@@ -57,8 +57,9 @@ func (a *App) OpenChapter(bookID string, chapterUID int64) (*ReaderSession, erro
 	}
 	sess := &ReaderSession{Book: *book, Chapter: chapter, Chapters: chapters}
 	cached, cacheErr := a.store.ChapterContent(bookID, chapter.UID)
-	needsImages := cacheErr == nil && hasMissingImage(cached.Blocks)
-	if cacheErr == nil && (!needsImages || !a.shouldRetryImages(bookID, chapter.UID)) {
+	cachedUsable := cacheErr == nil && len(cached.Blocks) > 0
+	needsImages := cachedUsable && hasMissingImage(cached.Blocks)
+	if cachedUsable && (!needsImages || !a.shouldRetryImages(bookID, chapter.UID)) {
 		sess.Content = *cached
 		sess.FromCache = true
 		if p, perr := a.store.Progress(bookID); perr == nil {
@@ -75,7 +76,7 @@ func (a *App) OpenChapter(bookID string, chapterUID int64) (*ReaderSession, erro
 
 	ch, err := a.fetchChapter(ctx, bookID, chapter, chapters)
 	if err != nil {
-		if cacheErr == nil {
+		if cachedUsable {
 			// A repair fetch must not make previously readable text disappear.
 			a.logf("重新解析章节失败，继续使用缓存：%v", err)
 			sess.Content = *cached
@@ -84,6 +85,20 @@ func (a *App) OpenChapter(bookID string, chapterUID int64) (*ReaderSession, erro
 				sess.Progress = p
 			}
 			return sess, nil
+		}
+		// New titles frequently start with a picture-only cover or copyright
+		// page. If that page decodes to nothing, open the next readable chapter
+		// instead of failing the whole book with a protocol error.
+		if errors.Is(err, weread.ErrEmptyChapter) {
+			if nextChapter, nextContent, nerr := a.fetchNextReadableChapter(ctx, bookID, chapter, chapters); nerr == nil {
+				a.logf("章节正文为空，已跳到下一章：book=%s from=%d to=%d", bookID, chapter.UID, nextChapter.UID)
+				sess.Chapter = nextChapter
+				sess.Content = *nextContent
+				if p, perr := a.store.Progress(bookID); perr == nil {
+					sess.Progress = p
+				}
+				return sess, nil
+			}
 		}
 		return nil, err
 	}
@@ -102,10 +117,49 @@ func pickChapter(chapters []weread.Chapter, uid int64) (weread.Chapter, bool) {
 			}
 		}
 	}
+	return pickStartChapter(chapters)
+}
+
+// pickStartChapter skips the cover/copyright/recommendation pages WeRead puts
+// at the front of most EPUBs. Opening a book should land on readable body text
+// when the reader has no saved progress.
+func pickStartChapter(chapters []weread.Chapter) (weread.Chapter, bool) {
+	for _, c := range chapters {
+		if !isFrontMatterChapter(c.Title) {
+			return c, true
+		}
+	}
 	if len(chapters) > 0 {
 		return chapters[0], true
 	}
 	return weread.Chapter{}, false
+}
+
+// isFrontMatterChapter recognises the non-body entries at the start of a
+// WeRead catalogue. The list is deliberately narrow: skipping a real chapter
+// is worse than opening a short front-matter page.
+func isFrontMatterChapter(title string) bool {
+	t := strings.TrimSpace(title)
+	if t == "" {
+		return false
+	}
+	if t == "目录" {
+		return true
+	}
+	for _, marker := range []string{"封面", "版权信息", "文前", "扉页", "书名页", "出版说明", "内容提要"} {
+		if strings.Contains(t, marker) {
+			return true
+		}
+	}
+	if strings.HasPrefix(t, "推荐") {
+		rest := strings.TrimPrefix(t, "推荐")
+		if rest == "" || strings.HasPrefix(rest, "序") || strings.HasPrefix(rest, "语") {
+			return true
+		}
+		runes := []rune(rest)
+		return len(runes) > 0 && strings.ContainsRune("一二三四五六七八九十", runes[0])
+	}
+	return false
 }
 
 // fetchChapter downloads, decodes and caches one chapter.
@@ -189,8 +243,9 @@ func (a *App) fetchChapter(ctx context.Context, bookID string, chapter weread.Ch
 	}
 
 	blocks := content.Parse(result.HTML, resolve)
+	a.logf("章节解析：book=%s uid=%d html=%d blocks=%d", bookID, chapter.UID, len(result.HTML), len(blocks))
 	if len(blocks) == 0 {
-		return nil, fmt.Errorf("%w: 章节正文为空", weread.ErrProtocolChanged)
+		return nil, fmt.Errorf("%w: %s", weread.ErrEmptyChapter, chapter.Title)
 	}
 	images, missing := 0, 0
 	for _, b := range blocks {
@@ -218,6 +273,43 @@ func (a *App) fetchChapter(ctx context.Context, bookID string, chapter weread.Ch
 	_ = a.store.SetBookFormat(bookID, result.Format)
 	a.rememberReaderState(bookID, state, chapter.UID)
 	return out, nil
+}
+
+// fetchNextReadableChapter is the fallback for a cover/front-matter page that
+// decodes to nothing. It tries a few following chapters, since the first
+// readable text is often after the cover and copyright pages.
+func (a *App) fetchNextReadableChapter(ctx context.Context, bookID string, current weread.Chapter, all []weread.Chapter) (weread.Chapter, *weread.ChapterContent, error) {
+	idx := -1
+	for i, c := range all {
+		if c.UID == current.UID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return weread.Chapter{}, nil, errors.New("章节不在目录中")
+	}
+	tried := 0
+	for i := idx + 1; i < len(all) && tried < 6; i++ {
+		// A book can have several consecutive front-matter entries (cover,
+		// copyright, recommendations, abstract). Do not spend requests on
+		// them; jump to the next candidate body chapter instead.
+		if isFrontMatterChapter(all[i].Title) {
+			continue
+		}
+		tried++
+		if cached, cerr := a.store.ChapterContent(bookID, all[i].UID); cerr == nil && len(cached.Blocks) > 0 {
+			return all[i], cached, nil
+		}
+		content, err := a.fetchChapter(ctx, bookID, all[i], all)
+		if err == nil && len(content.Blocks) > 0 {
+			return all[i], content, nil
+		}
+		if err != nil && !errors.Is(err, weread.ErrEmptyChapter) {
+			a.logf("跳过空章节失败：book=%s uid=%d err=%v", bookID, all[i].UID, err)
+		}
+	}
+	return weread.Chapter{}, nil, errors.New("后续章节没有可显示的正文")
 }
 
 func (a *App) cacheChapterImages(ctx context.Context, bookID, tarURL, referer string) map[string]string {

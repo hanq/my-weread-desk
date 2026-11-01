@@ -131,3 +131,76 @@ func TestParseEntitiesAndNBSP(t *testing.T) {
 		t.Errorf("entities = %q", blocks[0].Text)
 	}
 }
+
+func TestParsePrefersLazyImageSource(t *testing.T) {
+	html := `<p><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" data-src="https://mmbiz.qpic.cn/example.jpg" alt="封面"></p>`
+	resolved := ""
+	blocks := Parse(html, func(src string) (string, bool) {
+		resolved = src
+		return "/media-proxy?src=" + src, true
+	})
+	if resolved != "https://mmbiz.qpic.cn/example.jpg" {
+		t.Fatalf("resolver got %q", resolved)
+	}
+	if len(blocks) != 1 || blocks[0].Kind != "image" || blocks[0].Src != "/media-proxy?src=https://mmbiz.qpic.cn/example.jpg" {
+		t.Fatalf("blocks = %+v", blocks)
+	}
+}
+
+func TestParseImageResolver(t *testing.T) {
+	blocks := Parse(`<img src="https://mmbiz.qpic.cn/example.jpg">`, func(src string) (string, bool) {
+		return "/media-proxy?src=" + src, true
+	})
+	if len(blocks) != 1 || blocks[0].Kind != "image" || blocks[0].Src != "/media-proxy?src=https://mmbiz.qpic.cn/example.jpg" {
+		t.Fatalf("blocks = %+v", blocks)
+	}
+}
+
+func TestParseSVGImage(t *testing.T) {
+	blocks := Parse(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><image xlink:href="https://res.weread.qq.com/wrepub/cover.jpg" width="600" height="800"/></svg>`, func(src string) (string, bool) {
+		if src == "https://res.weread.qq.com/wrepub/cover.jpg" {
+			return "/media/b/cover.jpg", true
+		}
+		return "", false
+	})
+	if len(blocks) != 1 || blocks[0].Kind != "image" || blocks[0].Src != "/media/b/cover.jpg" {
+		t.Fatalf("blocks = %+v", blocks)
+	}
+}
+
+func TestParseSVGImageInsideGroup(t *testing.T) {
+	blocks := Parse(`<svg><g transform="translate(0,0)"><image xlink:href="https://res.weread.qq.com/wrepub/page.jpg"/></g></svg>`, func(string) (string, bool) {
+		return "/media/b/page.jpg", true
+	})
+	if len(blocks) != 1 || blocks[0].Kind != "image" || blocks[0].Src != "/media/b/page.jpg" {
+		t.Fatalf("blocks = %+v", blocks)
+	}
+}
+
+func TestParseSVGText(t *testing.T) {
+	blocks := Parse(`<svg><text x="10" y="20">封面</text></svg>`, nil)
+	if len(blocks) != 1 || blocks[0].Text != "封面" {
+		t.Fatalf("blocks = %+v", blocks)
+	}
+}
+
+func TestParseBackgroundImage(t *testing.T) {
+	blocks := Parse(`<div class="cover" style="background-image:url('https://res.weread.qq.com/wrepub/cover.jpg')"></div>`, func(src string) (string, bool) {
+		if src == "https://res.weread.qq.com/wrepub/cover.jpg" {
+			return "/media/b/cover.jpg", true
+		}
+		return "", false
+	})
+	if len(blocks) != 1 || blocks[0].Kind != "image" || blocks[0].Src != "/media/b/cover.jpg" {
+		t.Fatalf("blocks = %+v", blocks)
+	}
+}
+
+func TestParseBackgroundImageWithTextStaysText(t *testing.T) {
+	blocks := Parse(`<div style="background-image:url('https://res.weread.qq.com/wrepub/cover.jpg')">正文</div>`, func(string) (string, bool) {
+		return "/media/b/cover.jpg", true
+	})
+	if len(blocks) != 1 || blocks[0].Kind != "para" || blocks[0].Text != "正文" {
+		t.Fatalf("blocks = %+v", blocks)
+	}
+}

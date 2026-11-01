@@ -61,6 +61,12 @@ var ErrAuthRequired = errors.New("需要登录微信读书")
 // from a network failure.
 var ErrProtocolChanged = errors.New("微信读书接口格式已变化，请更新应用")
 
+// ErrEmptyChapter means the decoded chapter had neither text nor a usable
+// image. New books often put a picture-only cover at the front of the
+// catalogue, so callers may try the next chapter instead of treating this as a
+// protocol change.
+var ErrEmptyChapter = errors.New("章节没有可显示的正文")
+
 // ErrLegacyLogin explains that the stored credentials came from the browser
 // login. Their access token is rejected by i.weread.qq.com (-2012) and their
 // `web@...` refresh token by /login (-2013), so the only fix is a fresh scan.
