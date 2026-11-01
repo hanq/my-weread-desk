@@ -4,6 +4,7 @@ import { api } from '../api';
 import { Icon } from '../icons';
 import { navigate, toast } from '../store';
 import type { Book, SearchResult } from '../types';
+import { coverUrl, handleCoverError } from '../bookCover';
 
 const SCOPES: [string, string][] = [
   ['ebook', '电子书'],
@@ -26,13 +27,20 @@ export function SearchView() {
     setLoading(true);
     api
       .search(q, scope, nextPage)
-      .then((res) => {
+      .then((raw) => {
+        const res = normaliseResult(raw);
         setPage(nextPage);
-        setResult((prev) => (nextPage === 0 || !prev ? res : { ...res, books: dedupe([...prev.books, ...res.books]) }));
+        setResult((prev) =>
+          nextPage === 0 || !prev
+            ? res
+            : { ...res, books: dedupe([...(prev.books ?? []), ...res.books]) },
+        );
       })
       .catch((e: unknown) => toast(String((e as Error).message || e), 'error'))
       .finally(() => setLoading(false));
   };
+
+  const books = result?.books ?? [];
 
   return (
     <>
@@ -81,14 +89,14 @@ export function SearchView() {
             <Icon name="search" size={32} />
             <p>输入关键字开始搜索</p>
           </div>
-        ) : result.books.length === 0 ? (
+        ) : books.length === 0 ? (
           <div className="empty">
             <p>没有找到相关结果</p>
           </div>
         ) : (
           <>
             <div className="shelf-grid">
-              {result.books.map((b) => (
+              {books.map((b) => (
                 <BookResult key={b.id} book={b} />
               ))}
             </div>
@@ -107,11 +115,18 @@ export function SearchView() {
 }
 
 function BookResult({ book }: { book: Book }) {
+  const cover = coverUrl(book);
   return (
     <button className="book-card" onClick={() => navigate({ name: 'detail', bookId: book.id })}>
       <div className="cover">
-        {book.cover ? (
-          <img src={book.cover} alt="" loading="lazy" referrerPolicy="no-referrer" />
+        {cover ? (
+          <img
+            src={cover}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={(e) => handleCoverError(book, e)}
+          />
         ) : (
           <div className="fallback">{book.title}</div>
         )}
@@ -121,6 +136,18 @@ function BookResult({ book }: { book: Book }) {
       <div className="book-author">{book.author}</div>
     </button>
   );
+}
+
+// The Go binding can send `null` for an empty result set; keep every render
+// path working with a real array.
+function normaliseResult(res: SearchResult | null): SearchResult {
+  return {
+    total: res?.total ?? 0,
+    hasMore: Boolean(res?.hasMore),
+    sid: res?.sid ?? '',
+    query: res?.query ?? '',
+    books: Array.isArray(res?.books) ? res.books : [],
+  };
 }
 
 function dedupe(list: Book[]): Book[] {

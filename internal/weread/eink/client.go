@@ -303,7 +303,7 @@ func (c *Client) Search(ctx context.Context, keyword, scope string, offset, coun
 		return nil, err
 	}
 
-	result := &weread.SearchResult{SID: raw.SID, Query: keyword, Total: int(raw.Total.Int64())}
+	result := &weread.SearchResult{SID: raw.SID, Query: keyword, Total: int(raw.Total.Int64()), Books: []weread.Book{}}
 	seen := map[string]bool{}
 	for _, group := range raw.Results {
 		for _, hit := range group.Books {
