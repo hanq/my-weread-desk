@@ -20,7 +20,8 @@ export type IconName =
   | 'list' | 'palette' | 'text' | 'moon' | 'sun' | 'download' | 'refresh'
   | 'more' | 'keyboard' | 'columns' | 'numbers' | 'eye' | 'eyeOff' | 'check'
   | 'code' | 'file' | 'folder' | 'chevronDown' | 'chevronRight' | 'star'
-  | 'clock' | 'type' | 'sparkle' | 'folderOpen' | 'lock' | 'external' | 'plus';
+  | 'clock' | 'type' | 'sparkle' | 'folderOpen' | 'lock' | 'external' | 'plus'
+  | 'arrowUp' | 'arrowDown';
 
 const paths: Record<IconName, ReactElement> = {
   book: <><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z" /><path d="M8 3v18" /></>,
@@ -64,6 +65,8 @@ const paths: Record<IconName, ReactElement> = {
   lock: <><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   external: <><path d="M14 4h6v6M20 4l-9 9" /><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></>,
+  arrowUp: <><path d="M12 20V5" /><path d="m6 11 6-6 6 6" /></>,
+  arrowDown: <><path d="M12 4v15" /><path d="m6 13 6 6 6-6" /></>,
 };
 
 export function Icon({ name, size = 18, ...rest }: { name: IconName; size?: number } & SVGProps<SVGSVGElement>) {

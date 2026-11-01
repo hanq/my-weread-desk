@@ -1,0 +1,973 @@
+/* Interface carriers. The four shelf materials now drive the whole chrome:
+ * title bar, sidebar, ambient light and selection behaviour. The reading canvas
+ * keeps its own theme, so a carrier never changes the page being read.
+ *
+ * Design language
+ *   paper  — ink + reading lamp: matte, warm brass, breathing halo.
+ *   bamboo — dew + cinnabar: lacquered grain, amber rim, slow sway.
+ *   jade   — jade heart + water light: frosted glass, caustics, drifting beads.
+ *   orb    — night lens + aurora: polished glass, rotating lamp, blue ring.
+ */
+
+.app-root[data-carrier] {
+  --shell-serif: 'Songti SC', 'Noto Serif SC', 'Source Han Serif SC', 'SimSun', serif;
+  --shell-panel: rgba(24, 24, 26, 0.72);
+  --shell-glass: rgba(30, 29, 26, 0.5);
+  --shell-line: rgba(232, 220, 194, 0.1);
+  --shell-line-strong: rgba(232, 220, 194, 0.22);
+  --shell-ink: #e9e4d6;
+  --shell-muted: #a39d8d;
+  --shell-faint: #746f63;
+  --shell-accent: #c9a86a;
+  --shell-accent-soft: rgba(201, 168, 106, 0.15);
+  --shell-accent-line: rgba(201, 168, 106, 0.42);
+  --shell-bg: #121316;
+  --shell-glow: rgba(214, 185, 125, 0.18);
+  --shell-aurora: rgba(214, 185, 125, 0.13);
+  --shell-caustic: rgba(214, 185, 125, 0.1);
+  --shell-dew: rgba(240, 230, 206, 0.42);
+  --shell-hover: rgba(255, 248, 232, 0.055);
+  --shell-ring: conic-gradient(from 0deg, transparent 0 58%, var(--shell-accent) 72%, transparent 88% 100%);
+
+  --chrome: var(--shell-bg);
+  --chrome-2: var(--shell-panel);
+  --chrome-3: var(--shell-panel);
+  --chrome-line: var(--shell-line);
+  --chrome-line-strong: var(--shell-line-strong);
+  --ink: var(--shell-ink);
+  --ink-dim: var(--shell-muted);
+  --ink-faint: var(--shell-faint);
+  --accent: var(--shell-accent);
+  --accent-soft: var(--shell-accent-soft);
+  --accent-line: var(--shell-accent-line);
+
+  position: relative;
+  background:
+    radial-gradient(90% 60% at 10% -12%, var(--shell-glow), transparent 62%),
+    var(--shell-bg);
+  color: var(--shell-ink);
+  transition: background-color 0.5s var(--ease-standard);
+}
+
+.app-root[data-carrier='bamboo'] {
+  --shell-panel: rgba(25, 29, 19, 0.7);
+  --shell-glass: rgba(28, 31, 19, 0.48);
+  --shell-line: rgba(226, 202, 154, 0.12);
+  --shell-line-strong: rgba(226, 202, 154, 0.26);
+  --shell-ink: #efe5d0;
+  --shell-muted: #b1a286;
+  --shell-faint: #877b64;
+  --shell-accent: #c65d3c;
+  --shell-accent-soft: rgba(198, 93, 60, 0.17);
+  --shell-accent-line: rgba(198, 93, 60, 0.44);
+  --shell-bg: #10140e;
+  --shell-glow: rgba(214, 177, 104, 0.16);
+  --shell-aurora: rgba(214, 177, 104, 0.13);
+  --shell-caustic: rgba(214, 177, 104, 0.08);
+  --shell-dew: rgba(236, 215, 172, 0.45);
+  --shell-hover: rgba(222, 192, 132, 0.075);
+  --shell-ring: conic-gradient(from 0deg, transparent 0 60%, rgba(236, 190, 140, 0.9) 76%, transparent 92% 100%);
+}
+
+.app-root[data-carrier='jade'] {
+  --shell-panel: rgba(19, 35, 31, 0.56);
+  --shell-glass: rgba(18, 36, 32, 0.44);
+  --shell-line: rgba(168, 216, 200, 0.14);
+  --shell-line-strong: rgba(168, 216, 200, 0.3);
+  --shell-ink: #e4f1ec;
+  --shell-muted: #97aea6;
+  --shell-faint: #70877f;
+  --shell-accent: #8ecbb8;
+  --shell-accent-soft: rgba(142, 203, 184, 0.16);
+  --shell-accent-line: rgba(142, 203, 184, 0.44);
+  --shell-bg: #0a1211;
+  --shell-glow: rgba(120, 210, 185, 0.2);
+  --shell-aurora: rgba(120, 210, 185, 0.14);
+  --shell-caustic: rgba(142, 230, 205, 0.16);
+  --shell-dew: rgba(214, 247, 236, 0.5);
+  --shell-hover: rgba(160, 215, 195, 0.075);
+  --shell-ring: conic-gradient(from 0deg, transparent 0 50%, rgba(225, 255, 245, 0.96) 63%, var(--shell-accent) 72%, transparent 86% 100%);
+}
+
+.app-root[data-carrier='orb'] {
+  --shell-panel: rgba(14, 21, 33, 0.56);
+  --shell-glass: rgba(13, 20, 32, 0.5);
+  --shell-line: rgba(180, 205, 255, 0.12);
+  --shell-line-strong: rgba(180, 205, 255, 0.26);
+  --shell-ink: #e9edf8;
+  --shell-muted: #939db2;
+  --shell-faint: #6d7789;
+  --shell-accent: #9db8ff;
+  --shell-accent-soft: rgba(157, 184, 255, 0.16);
+  --shell-accent-line: rgba(157, 184, 255, 0.44);
+  --shell-bg: #070a10;
+  --shell-glow: rgba(120, 200, 255, 0.2);
+  --shell-aurora: rgba(120, 200, 255, 0.16);
+  --shell-caustic: rgba(120, 220, 255, 0.16);
+  --shell-dew: rgba(210, 235, 255, 0.5);
+  --shell-hover: rgba(255, 255, 255, 0.055);
+  --shell-ring: conic-gradient(from 0deg, transparent 0 48%, rgba(230, 242, 255, 0.96) 61%, var(--shell-accent) 70%, transparent 84% 100%);
+}
+
+/* ------------------------------------------------------------- title bar */
+
+.app-root[data-carrier] .titlebar {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--shell-panel), var(--shell-glass));
+  border-bottom: 1px solid var(--shell-line);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.app-root[data-carrier] .titlebar > *:not(.titlebar-dew) {
+  position: relative;
+  z-index: 1;
+}
+.app-root[data-carrier] .titlebar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 160% at 10% -30%, var(--shell-glow), transparent 62%),
+    linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.015));
+}
+.app-root[data-carrier='paper'] .titlebar::before {
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 3px),
+    radial-gradient(60% 190% at 8% -40%, rgba(214, 185, 125, 0.2), transparent 65%),
+    linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.012));
+}
+.app-root[data-carrier='bamboo'] .titlebar::before {
+  background:
+    repeating-linear-gradient(90deg, rgba(226, 202, 154, 0.035) 0 1px, transparent 1px 5px),
+    radial-gradient(60% 200% at 12% -40%, rgba(214, 177, 104, 0.2), transparent 65%);
+}
+.app-root[data-carrier='jade'] .titlebar::before {
+  background:
+    radial-gradient(70% 190% at 75% -30%, rgba(160, 240, 215, 0.13), transparent 60%),
+    linear-gradient(100deg, transparent 25%, rgba(255, 255, 255, 0.055) 48%, transparent 70%);
+}
+.app-root[data-carrier='orb'] .titlebar::before {
+  background:
+    radial-gradient(60% 220% at 80% -40%, rgba(120, 200, 255, 0.17), transparent 62%),
+    linear-gradient(90deg, transparent 30%, rgba(120, 200, 255, 0.09) 50%, transparent 72%);
+  background-size: 100% 100%, 220% 100%;
+  animation: carrier-aurora 14s linear infinite;
+}
+.app-root[data-carrier='jade'] .titlebar,
+.app-root[data-carrier='orb'] .titlebar {
+  -webkit-backdrop-filter: blur(20px) saturate(125%);
+  backdrop-filter: blur(20px) saturate(125%);
+}
+
+.app-root[data-carrier] .titlebar .brand {
+  color: var(--shell-muted);
+  font-family: var(--font-ui);
+  letter-spacing: 0.06em;
+}
+.app-root[data-carrier='paper'] .titlebar .brand,
+.app-root[data-carrier='bamboo'] .titlebar .brand,
+.app-root[data-carrier='jade'] .titlebar .brand {
+  font-family: var(--shell-serif);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
+.app-root[data-carrier='orb'] .titlebar .brand {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+}
+
+.app-root[data-carrier] .titlebar .brand .dot {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  background: var(--shell-accent);
+  box-shadow:
+    0 0 12px var(--shell-glow),
+    0 0 2px var(--shell-accent);
+}
+.app-root[data-carrier] .titlebar .brand .dot::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  border-radius: 50%;
+  background: var(--shell-ring);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  opacity: 0;
+  pointer-events: none;
+  animation: carrier-orbit 12s linear infinite;
+}
+.app-root[data-carrier] .titlebar .brand .dot::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.78);
+  pointer-events: none;
+}
+.app-root[data-carrier='paper'] .titlebar .brand .dot::before {
+  background: radial-gradient(circle, var(--shell-glow), transparent 68%);
+  opacity: 0.7;
+  animation: carrier-breathe 9s ease-in-out infinite;
+}
+.app-root[data-carrier='bamboo'] .titlebar .brand .dot::before {
+  opacity: 0.65;
+  animation-duration: 22s;
+}
+.app-root[data-carrier='jade'] .titlebar .brand .dot::before,
+.app-root[data-carrier='orb'] .titlebar .brand .dot::before {
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+}
+.app-root[data-carrier='jade'] .titlebar .brand .dot::before {
+  opacity: 0.85;
+  animation-duration: 14s;
+}
+.app-root[data-carrier='orb'] .titlebar .brand .dot::before {
+  opacity: 0.95;
+  animation-duration: 7s;
+}
+
+.app-root[data-carrier] .title-divider {
+  width: 1px;
+  height: 14px;
+  flex: none;
+  margin: 0 2px;
+  background: linear-gradient(180deg, transparent, var(--shell-line-strong), transparent);
+  opacity: 0.8;
+}
+.app-root[data-carrier] .title-context {
+  flex: none;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  color: var(--shell-muted);
+  white-space: nowrap;
+}
+.app-root[data-carrier='paper'] .title-context,
+.app-root[data-carrier='bamboo'] .title-context,
+.app-root[data-carrier='jade'] .title-context {
+  font-family: var(--shell-serif);
+  letter-spacing: 0.12em;
+}
+.app-root[data-carrier] .carrier-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  height: 23px;
+  padding: 0 8px 0 4px;
+  border-radius: 999px;
+  border: 1px solid var(--shell-line);
+  background: var(--shell-glass);
+  color: var(--shell-muted);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.app-root[data-carrier] .carrier-chip-mark {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--shell-accent-line);
+  background: var(--shell-accent-soft);
+  color: var(--shell-ink);
+  font-family: var(--shell-serif);
+  font-size: 9px;
+  line-height: 1;
+}
+.app-root[data-carrier='bamboo'] .carrier-chip-mark {
+  color: #3a2b12;
+  background: linear-gradient(160deg, #ddc795, #c2a166);
+  border-color: rgba(255, 240, 205, 0.45);
+}
+.app-root[data-carrier='jade'] .carrier-chip-mark {
+  color: #14352f;
+  background: linear-gradient(150deg, #dff5ec, #94c9b8);
+  border-color: rgba(220, 248, 238, 0.5);
+}
+.app-root[data-carrier='orb'] .carrier-chip-mark {
+  color: var(--shell-ink);
+  background: radial-gradient(circle at 34% 28%, #2c344a, #0d1119 74%);
+  border-color: var(--shell-line-strong);
+}
+.app-root[data-carrier] .titlebar .win-actions .icon-btn {
+  color: var(--shell-muted);
+  border-radius: 7px;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+.app-root[data-carrier] .titlebar .win-actions .icon-btn:hover {
+  color: var(--shell-ink);
+  background: var(--shell-hover);
+  box-shadow:
+    inset 0 0 0 1px var(--shell-line),
+    0 0 16px var(--shell-glow);
+}
+.app-root[data-carrier] .titlebar .win-actions .icon-btn.active {
+  color: var(--shell-accent);
+  background: var(--shell-accent-soft);
+  box-shadow: 0 0 14px var(--shell-glow);
+}
+.app-root[data-carrier] .titlebar .win-actions .icon-btn.close:hover {
+  background: #d64545;
+  color: #fff;
+  box-shadow: 0 0 18px rgba(214, 69, 69, 0.45);
+}
+
+.titlebar-dew {
+  position: absolute;
+  z-index: 2;
+  width: 7px;
+  height: 9px;
+  border-radius: 50% 50% 55% 55% / 60% 60% 40% 40%;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.85) 0 1px, rgba(255, 255, 255, 0.12) 2px, transparent 4px),
+    radial-gradient(circle at 50% 72%, var(--shell-dew), transparent 70%);
+  box-shadow:
+    inset 0 -2px 3px rgba(0, 0, 0, 0.18),
+    0 2px 6px rgba(0, 0, 0, 0.18),
+    0 0 12px var(--shell-glow);
+}
+.app-root[data-carrier='jade'] .titlebar-dew,
+.app-root[data-carrier='orb'] .titlebar-dew {
+  opacity: 0.7;
+}
+.app-root[data-carrier='bamboo'] .titlebar-dew.dew-b {
+  opacity: 0.38;
+}
+.titlebar-dew.dew-a {
+  right: 154px;
+  top: 7px;
+  transform: rotate(12deg);
+}
+.titlebar-dew.dew-b {
+  right: 142px;
+  top: 22px;
+  width: 4px;
+  height: 6px;
+  transform: rotate(-8deg);
+}
+
+/* --------------------------------------------------------------- sidebar */
+
+.app-root[data-carrier] .sidebar {
+  --aura-x: 19px;
+  position: relative;
+  gap: 3px;
+  padding: 14px 10px 12px;
+  background: linear-gradient(180deg, var(--shell-panel), var(--shell-glass));
+  border-right: 1px solid var(--shell-line);
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.03),
+    14px 0 46px rgba(0, 0, 0, 0.18);
+}
+.app-root[data-carrier='paper'] .sidebar {
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, var(--shell-panel), var(--shell-glass));
+}
+.app-root[data-carrier='bamboo'] .sidebar {
+  background:
+    repeating-linear-gradient(90deg, rgba(226, 202, 154, 0.03) 0 1px, transparent 1px 6px),
+    linear-gradient(180deg, var(--shell-panel), var(--shell-glass));
+}
+.app-root[data-carrier='jade'] .sidebar,
+.app-root[data-carrier='orb'] .sidebar {
+  -webkit-backdrop-filter: blur(26px) saturate(125%);
+  backdrop-filter: blur(26px) saturate(125%);
+}
+.app-root[data-carrier] .sidebar-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.app-root[data-carrier] .sidebar > .group-label,
+.app-root[data-carrier] .sidebar > .nav-item,
+.app-root[data-carrier] .sidebar > .sidebar-foot {
+  position: relative;
+  z-index: 1;
+}
+
+.ambient-lamp,
+.ambient-aurora,
+.ambient-caustic,
+.ambient-grid,
+.ambient-dew {
+  position: absolute;
+  pointer-events: none;
+}
+.ambient-lamp {
+  inset: 0;
+  background: radial-gradient(65% 38% at 20% 0%, var(--shell-glow), transparent 70%);
+  opacity: 0.78;
+}
+.app-root[data-carrier='jade'] .ambient-lamp,
+.app-root[data-carrier='orb'] .ambient-lamp {
+  display: none;
+}
+.ambient-aurora {
+  width: 300px;
+  height: 300px;
+  left: -120px;
+  top: -90px;
+  border-radius: 50%;
+  background: var(--shell-aurora);
+  filter: blur(42px);
+  opacity: 0.55;
+}
+.app-root[data-carrier='paper'] .ambient-aurora {
+  display: none;
+}
+.app-root[data-carrier='bamboo'] .ambient-aurora {
+  width: 240px;
+  height: 110%;
+  left: -46px;
+  top: 0;
+  border-radius: 50%;
+  background: linear-gradient(90deg, transparent, rgba(214, 177, 104, 0.13), transparent);
+  filter: blur(30px);
+  animation: carrier-sway 16s ease-in-out infinite;
+}
+.app-root[data-carrier='jade'] .ambient-aurora {
+  background: radial-gradient(circle, rgba(120, 210, 185, 0.22), transparent 65%);
+  animation: carrier-breathe 11s ease-in-out infinite;
+}
+.app-root[data-carrier='orb'] .ambient-aurora {
+  width: 420px;
+  height: 420px;
+  left: -160px;
+  top: -130px;
+  background: conic-gradient(from 0deg, transparent, rgba(120, 200, 255, 0.2), transparent 42%, rgba(120, 220, 255, 0.12), transparent 72%);
+  filter: blur(44px);
+  animation: carrier-lamp 26s linear infinite;
+}
+.ambient-caustic {
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--shell-caustic), transparent 66%);
+  filter: blur(22px);
+  opacity: 0;
+}
+.caustic-a {
+  right: -84px;
+  top: 24%;
+  animation: caustic-drift 22s ease-in-out infinite alternate;
+}
+.caustic-b {
+  left: -70px;
+  bottom: 14%;
+  width: 150px;
+  height: 150px;
+  animation: caustic-drift 28s ease-in-out infinite alternate-reverse;
+}
+.app-root[data-carrier='jade'] .ambient-caustic,
+.app-root[data-carrier='orb'] .ambient-caustic {
+  opacity: 0.6;
+}
+.ambient-grid {
+  inset: 0;
+  opacity: 0;
+  background-image: radial-gradient(rgba(180, 205, 255, 0.16) 1px, transparent 1.4px);
+  background-size: 14px 14px;
+  -webkit-mask-image: radial-gradient(70% 62% at 50% 0%, #000, transparent 76%);
+  mask-image: radial-gradient(70% 62% at 50% 0%, #000, transparent 76%);
+}
+.app-root[data-carrier='orb'] .ambient-grid {
+  opacity: 0.42;
+}
+.ambient-dew {
+  width: 8px;
+  height: 11px;
+  border-radius: 50% 50% 55% 55% / 60% 60% 40% 40%;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.82) 0 1px, rgba(255, 255, 255, 0.12) 2px, transparent 4px),
+    radial-gradient(circle at 50% 72%, var(--shell-dew), transparent 70%);
+  box-shadow:
+    inset 0 -2px 4px rgba(0, 0, 0, 0.22),
+    0 2px 8px rgba(0, 0, 0, 0.2),
+    0 0 14px var(--shell-glow);
+  animation: dew-float 12s ease-in-out infinite;
+}
+.dew-a {
+  width: 8px;
+  height: 11px;
+  right: 18px;
+  top: 98px;
+}
+.dew-b {
+  width: 5px;
+  height: 7px;
+  left: 16px;
+  top: 58%;
+  animation-delay: -4s;
+}
+.dew-c {
+  width: 6px;
+  height: 9px;
+  right: 26px;
+  bottom: 132px;
+  animation-delay: -8s;
+}
+.app-root[data-carrier='jade'] .ambient-dew,
+.app-root[data-carrier='orb'] .ambient-dew {
+  opacity: 0.58;
+}
+.app-root[data-carrier='bamboo'] .ambient-dew.dew-a {
+  opacity: 0.38;
+}
+.app-root[data-carrier='paper'] .ambient-dew {
+  display: none;
+}
+
+.app-root[data-carrier] .sidebar .group-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 10px 7px;
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: none;
+  color: var(--shell-faint);
+}
+.app-root[data-carrier='paper'] .sidebar .group-label,
+.app-root[data-carrier='bamboo'] .sidebar .group-label,
+.app-root[data-carrier='jade'] .sidebar .group-label {
+  font-family: var(--shell-serif);
+}
+.app-root[data-carrier] .sidebar .group-label::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--shell-accent);
+  box-shadow: 0 0 8px var(--shell-glow);
+}
+.app-root[data-carrier] .sidebar .group-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--shell-line), transparent);
+}
+
+.app-root[data-carrier] .sidebar .nav-item {
+  position: relative;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.app-root[data-carrier] .sidebar .nav-item::before {
+  width: 2px;
+  height: 18px;
+  z-index: 2;
+  background: linear-gradient(180deg, transparent, var(--shell-accent), transparent);
+  box-shadow: 0 0 10px var(--shell-glow);
+}
+.app-root[data-carrier='bamboo'] .sidebar .nav-item.on::before {
+  width: 3px;
+  background: linear-gradient(180deg, transparent, #d0704e, transparent);
+}
+.app-root[data-carrier='jade'] .sidebar .nav-item.on::before {
+  background: linear-gradient(180deg, transparent, #b8f0dd, transparent);
+  box-shadow: 0 0 14px rgba(142, 230, 205, 0.5);
+}
+.app-root[data-carrier='orb'] .sidebar .nav-item.on::before {
+  background: linear-gradient(180deg, transparent, #cfe3ff, transparent);
+  box-shadow: 0 0 14px rgba(157, 184, 255, 0.5);
+}
+.app-root[data-carrier] .sidebar .nav-item:hover {
+  background: var(--shell-hover);
+  color: var(--shell-ink);
+}
+.app-root[data-carrier] .sidebar .nav-item.on {
+  color: var(--shell-ink);
+  background: transparent;
+  box-shadow:
+    inset 0 0 0 1px var(--shell-line),
+    0 8px 20px rgba(0, 0, 0, 0.12);
+}
+.app-root[data-carrier='paper'] .sidebar .nav-item.on {
+  color: #f0ead9;
+}
+.app-root[data-carrier='bamboo'] .sidebar .nav-item.on {
+  color: #f6ead2;
+}
+.app-root[data-carrier='jade'] .sidebar .nav-item.on {
+  color: #effbf7;
+}
+.app-root[data-carrier='orb'] .sidebar .nav-item.on {
+  color: #eaf1ff;
+}
+.app-root[data-carrier] .sidebar .nav-item.on > svg {
+  filter: drop-shadow(0 0 6px var(--shell-glow));
+}
+.app-root[data-carrier] .sidebar .nav-item.on .count {
+  color: var(--shell-accent);
+}
+
+.app-root[data-carrier] .sidebar .nav-aura {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+.app-root[data-carrier] .sidebar .nav-aura::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 20%, rgba(255, 255, 255, 0.14) 46%, transparent 68%);
+  transform: translateX(-120%);
+}
+.app-root[data-carrier] .sidebar .nav-aura::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  margin-top: -13px;
+  border-radius: 50%;
+  background: var(--shell-ring);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  opacity: 0;
+  filter: drop-shadow(0 0 5px var(--shell-glow));
+  animation: carrier-orbit 9s linear infinite;
+}
+.app-root[data-carrier] .sidebar .nav-item:hover .nav-aura {
+  opacity: 0.46;
+  background: radial-gradient(120% 100% at 0% 50%, var(--shell-accent-soft), transparent 65%);
+}
+.app-root[data-carrier] .sidebar .nav-item.on .nav-aura {
+  opacity: 1;
+  background:
+    radial-gradient(120% 100% at 0% 50%, var(--shell-accent-soft), transparent 64%),
+    linear-gradient(90deg, var(--shell-accent-soft), transparent 58%);
+}
+.app-root[data-carrier] .sidebar .nav-item.on .nav-aura::before {
+  animation: nav-sheen 1.1s var(--ease-out) both;
+}
+.app-root[data-carrier] .sidebar .nav-item.on .nav-aura::after {
+  opacity: 0.9;
+}
+.app-root[data-carrier='paper'] .sidebar .nav-item.on .nav-aura::after {
+  left: 15px;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  opacity: 0.95;
+  border-radius: 50%;
+  background: var(--shell-accent);
+  box-shadow: 0 0 10px var(--shell-glow);
+  filter: none;
+  -webkit-mask: none;
+  mask: none;
+  animation: carrier-breathe 7s ease-in-out infinite;
+}
+.app-root[data-carrier='bamboo'] .sidebar .nav-item.on .nav-aura::after {
+  left: 16px;
+  width: 7px;
+  height: 9px;
+  margin-top: -4px;
+  opacity: 0.95;
+  border-radius: 50% 50% 55% 55% / 60% 60% 40% 40%;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.8) 0 1px, transparent 3px),
+    radial-gradient(circle at 50% 72%, rgba(198, 93, 60, 0.9), transparent 72%);
+  box-shadow: 0 0 10px rgba(198, 93, 60, 0.4);
+  filter: none;
+  -webkit-mask: none;
+  mask: none;
+  animation: dew-float 6s ease-in-out infinite;
+}
+.app-root[data-carrier='jade'] .sidebar .nav-item.on .nav-aura {
+  background:
+    radial-gradient(circle at var(--aura-x) 50%, rgba(190, 245, 225, 0.22), transparent 31%),
+    radial-gradient(120% 100% at 0% 50%, var(--shell-accent-soft), transparent 64%),
+    linear-gradient(90deg, var(--shell-accent-soft), transparent 58%);
+}
+.app-root[data-carrier='orb'] .sidebar .nav-item.on .nav-aura {
+  background:
+    radial-gradient(circle at var(--aura-x) 50%, rgba(190, 215, 255, 0.24), transparent 31%),
+    radial-gradient(120% 100% at 0% 50%, var(--shell-accent-soft), transparent 64%),
+    linear-gradient(90deg, var(--shell-accent-soft), transparent 58%);
+}
+.app-root[data-carrier='jade'] .sidebar .nav-item.on,
+.app-root[data-carrier='orb'] .sidebar .nav-item.on {
+  box-shadow:
+    inset 0 0 0 1px var(--shell-accent-line),
+    inset 0 0 18px var(--shell-glow),
+    0 8px 20px rgba(0, 0, 0, 0.16);
+}
+
+/* footer: sync + account, separated from navigation */
+.app-root[data-carrier] .sidebar-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+.app-root[data-carrier] .sidebar-foot::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 6px;
+  right: 6px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--shell-line-strong), transparent);
+}
+.app-root[data-carrier] .sidebar .account {
+  position: relative;
+  margin-top: 0;
+  overflow: hidden;
+  background: var(--shell-glass);
+  border: 1px solid var(--shell-line);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 8px 22px rgba(0, 0, 0, 0.16);
+}
+.app-root[data-carrier] .sidebar .account::before {
+  content: '';
+  position: absolute;
+  right: -12px;
+  top: -16px;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.28), transparent 55%);
+  opacity: 0.5;
+}
+.app-root[data-carrier='jade'] .sidebar .account::before,
+.app-root[data-carrier='orb'] .sidebar .account::before {
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.6) 0 1px, rgba(255, 255, 255, 0.12) 2px 6px, transparent 8px);
+  opacity: 0.8;
+  filter: blur(0.2px);
+}
+.app-root[data-carrier] .sidebar .account::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(120deg, transparent 20%, rgba(255, 255, 255, 0.055) 48%, transparent 72%);
+}
+.app-root[data-carrier] .sidebar .account > * {
+  position: relative;
+  z-index: 1;
+}
+.app-root[data-carrier] .sidebar .account .avatar {
+  box-shadow:
+    0 0 0 1px var(--shell-line-strong),
+    0 0 14px var(--shell-glow);
+}
+.app-root[data-carrier] .sidebar .account .icon-btn:hover {
+  color: var(--shell-ink);
+  background: var(--shell-accent-soft);
+}
+
+.app-root[data-carrier] .main {
+  background:
+    radial-gradient(70% 45% at 90% -10%, var(--shell-glow), transparent 62%),
+    var(--shell-bg);
+}
+.app-root[data-carrier='jade'] .main {
+  background:
+    radial-gradient(60% 40% at 86% -10%, rgba(142, 203, 184, 0.1), transparent 60%),
+    radial-gradient(38% 30% at 18% 110%, rgba(142, 203, 184, 0.06), transparent 60%),
+    var(--shell-bg);
+}
+.app-root[data-carrier='orb'] .main {
+  background:
+    radial-gradient(58% 40% at 88% -12%, rgba(120, 200, 255, 0.1), transparent 60%),
+    radial-gradient(36% 28% at 16% 110%, rgba(157, 184, 255, 0.06), transparent 60%),
+    var(--shell-bg);
+}
+
+/* ---------------------------------------------------------------- motion */
+
+@keyframes carrier-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes carrier-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.04);
+  }
+}
+@keyframes carrier-lamp {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes carrier-sway {
+  0%,
+  100% {
+    transform: translateX(0) skewX(0);
+  }
+  50% {
+    transform: translateX(10px) skewX(2deg);
+  }
+}
+@keyframes carrier-aurora {
+  0% {
+    background-position: 0 0, 200% 0;
+  }
+  100% {
+    background-position: 0 0, -100% 0;
+  }
+}
+@keyframes caustic-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(-18px, 24px, 0) scale(1.08);
+  }
+}
+@keyframes dew-float {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-4px) scale(1.02);
+  }
+}
+@keyframes nav-sheen {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(120%);
+  }
+}
+
+/* ------------------------------------------------------------ responsive */
+
+@media (max-width: 980px) {
+  .app-root[data-carrier] .sidebar {
+    --aura-x: 50%;
+    padding: 10px 6px;
+  }
+  .app-root[data-carrier] .sidebar .group-label {
+    display: none;
+  }
+  .app-root[data-carrier] .sidebar .account {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    overflow: visible;
+  }
+  .app-root[data-carrier] .sidebar .account::before,
+  .app-root[data-carrier] .sidebar .account::after {
+    display: none;
+  }
+  .app-root[data-carrier] .sidebar .nav-item.on .nav-aura::after {
+    left: 50%;
+    margin-left: -13px;
+  }
+  .app-root[data-carrier='paper'] .sidebar .nav-item.on .nav-aura::after {
+    left: 50%;
+    margin-left: -4px;
+  }
+  .app-root[data-carrier='bamboo'] .sidebar .nav-item.on .nav-aura::after {
+    left: 50%;
+    margin-left: -3px;
+  }
+  .app-root[data-carrier] .sidebar-foot {
+    padding-top: 8px;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-root[data-carrier] .title-context,
+  .app-root[data-carrier] .title-divider {
+    display: none;
+  }
+  .titlebar-dew {
+    display: none;
+  }
+  .app-root[data-carrier] .sidebar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(82vw, 280px);
+    padding: 12px 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+}
+
+@media (max-width: 560px) {
+  .app-root[data-carrier] .carrier-chip {
+    width: 24px;
+    padding: 0;
+    justify-content: center;
+  }
+  .app-root[data-carrier] .carrier-chip-label {
+    display: none;
+  }
+  .app-root[data-carrier] .carrier-chip-mark {
+    border: 0;
+    background: transparent;
+  }
+  .app-root[data-carrier] .titlebar .brand .dot::before {
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-root[data-carrier] .titlebar::before,
+  .app-root[data-carrier] .titlebar .brand .dot::before,
+  .app-root[data-carrier] .sidebar-ambient *,
+  .app-root[data-carrier] .sidebar .nav-aura::before,
+  .app-root[data-carrier] .sidebar .nav-aura::after {
+    animation: none !important;
+  }
+}
