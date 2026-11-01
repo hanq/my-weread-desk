@@ -1,0 +1,826 @@
+/* Smart shelf: one entry for every AI mode. The visual hierarchy is
+ * book-first: the horizontal shelf is the stable anchor, the focused book
+ * explains its state, and the action dock only shows modes that make sense
+ * for that book's kind. */
+
+.smart-head {
+  align-items: flex-end;
+}
+
+.smart-count {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  padding-bottom: 2px;
+}
+
+.smart-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 0;
+}
+
+/* ---------------------------------------------------------------- shelf */
+
+.smart-shelf-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  margin: 0 -4px;
+  padding: 4px 4px 12px;
+  background: linear-gradient(to bottom, var(--chrome) 72%, transparent 100%);
+}
+
+.smart-shelf {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 6px 2px 10px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    #000 18px,
+    #000 calc(100% - 18px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    #000 18px,
+    #000 calc(100% - 18px),
+    transparent 100%
+  );
+}
+
+.smart-shelf::-webkit-scrollbar {
+  display: none;
+}
+
+.smart-card {
+  position: relative;
+  flex: 0 0 196px;
+  scroll-snap-align: center;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--chrome-2);
+  color: var(--ink);
+  text-align: left;
+  opacity: 0.7;
+  transition:
+    transform 220ms var(--ease-out),
+    opacity 220ms var(--ease-out),
+    border-color 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.smart-card:hover {
+  opacity: 1;
+  border-color: var(--line-strong);
+}
+
+.smart-card.on {
+  opacity: 1;
+  transform: translateY(-4px) scale(1.03);
+  border-color: var(--accent-line);
+  background: linear-gradient(180deg, var(--accent-soft), var(--chrome-2) 60%);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.32),
+    0 0 0 1px var(--accent-line),
+    0 0 30px rgba(77, 132, 255, 0.18);
+}
+
+.smart-card.on::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 30px rgba(77, 132, 255, 0.3);
+  animation: smart-glow 3.2s ease-in-out infinite;
+}
+
+.smart-card-cover,
+.smart-focus-cover,
+.smart-picker-cover {
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 4px;
+  background: linear-gradient(145deg, #39445c, #202636);
+  color: #e8ecf4;
+}
+
+.smart-card-cover {
+  width: 46px;
+  height: 64px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+}
+
+.smart-card-cover img,
+.smart-focus-cover img,
+.smart-picker-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.smart-cover-letter {
+  font-family: var(--shelf-serif, 'Songti SC', serif);
+  font-size: 20px;
+  opacity: 0.75;
+}
+
+.smart-card-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.smart-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.smart-card-meta {
+  font-size: 9.5px;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smart-card-badges {
+  display: flex;
+  gap: 3px;
+  margin-top: 3px;
+}
+
+.smart-badge {
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--ink-faint);
+  font-size: 8.5px;
+  line-height: 1;
+}
+
+.smart-badge.on {
+  background: var(--accent-soft);
+  color: #cfe0ff;
+  box-shadow: inset 0 0 0 1px rgba(77, 132, 255, 0.3);
+}
+
+/* ---------------------------------------------------------------- focus */
+
+.smart-focus {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background:
+    radial-gradient(620px 220px at 12% -20%, var(--accent-soft), transparent 68%),
+    var(--chrome-2);
+  animation: smart-focus-in 280ms var(--ease-out) both;
+}
+
+.smart-focus::before {
+  content: '';
+  position: absolute;
+  inset: -60% 35% 40% -30%;
+  background: radial-gradient(closest-side, rgba(77, 132, 255, 0.12), transparent);
+  pointer-events: none;
+}
+
+.smart-focus-main {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.smart-focus-cover {
+  width: 82px;
+  height: 112px;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.36),
+    0 0 26px rgba(77, 132, 255, 0.16);
+}
+
+.smart-focus-info {
+  min-width: 0;
+}
+
+.smart-kicker {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ink-faint);
+}
+
+.smart-focus h2 {
+  margin: 6px 0 3px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+}
+
+.smart-focus p {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.smart-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 11px;
+}
+
+.smart-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.smart-status::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.smart-status.on {
+  background: rgba(73, 195, 139, 0.1);
+  color: #9fe3bf;
+}
+
+.smart-status.on::before {
+  box-shadow: 0 0 8px rgba(73, 195, 139, 0.7);
+}
+
+/* ---------------------------------------------------------------- actions */
+
+.smart-actions {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.smart-action {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--ink);
+  text-align: left;
+  transition:
+    transform 180ms var(--ease-out),
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
+  animation: smart-action-in 240ms var(--ease-out) both;
+}
+
+.smart-action:nth-child(2) {
+  animation-delay: 40ms;
+}
+.smart-action:nth-child(3) {
+  animation-delay: 80ms;
+}
+.smart-action:nth-child(4) {
+  animation-delay: 120ms;
+}
+
+.smart-action:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: var(--accent-line);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+}
+
+.smart-action.primary {
+  border-color: var(--accent-line);
+  background: linear-gradient(180deg, var(--accent-soft), rgba(77, 132, 255, 0.035));
+}
+
+.smart-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.smart-action-icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: #cfe0ff;
+}
+
+.smart-action:disabled .smart-action-icon {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink-faint);
+}
+
+.smart-action-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.smart-action-label {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.smart-action-hint {
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--ink-faint);
+}
+
+.smart-action-status {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink-faint);
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+.smart-action-status.on {
+  background: rgba(73, 195, 139, 0.1);
+  color: #9fe3bf;
+}
+
+/* ---------------------------------------------------------------- picker */
+
+.smart-picker-backdrop {
+  position: fixed;
+  inset: var(--titlebar-h) 0 0;
+  z-index: 60;
+  background: rgba(6, 8, 14, 0.56);
+  backdrop-filter: blur(5px);
+  animation: smart-fade 180ms ease both;
+}
+
+.smart-picker {
+  position: fixed;
+  top: var(--titlebar-h);
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  width: min(392px, 92vw);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line-strong);
+  background: var(--chrome-2);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.42);
+  animation: smart-picker-in 240ms var(--ease-out) both;
+}
+
+.smart-picker-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.smart-picker-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.smart-picker-head p {
+  margin: 4px 0 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.smart-picker-head .icon-btn {
+  margin-left: auto;
+}
+
+.smart-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 18px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--chrome-3);
+  color: var(--ink-faint);
+}
+
+.smart-picker-search:focus-within {
+  border-color: var(--accent);
+}
+
+.smart-picker-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.smart-picker-search input::placeholder {
+  color: var(--ink-faint);
+}
+
+.smart-picker-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 10px 16px;
+}
+
+.smart-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.smart-picker-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.smart-picker-item:disabled {
+  opacity: 0.58;
+  cursor: default;
+}
+
+.smart-picker-cover {
+  width: 34px;
+  height: 46px;
+}
+
+.smart-picker-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.smart-picker-title {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.smart-picker-meta {
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.smart-picker-add {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: #cfe0ff;
+  font-size: 10px;
+}
+
+.smart-picker-add.added {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink-faint);
+}
+
+/* ---------------------------------------------------------------- loading */
+
+.smart-loading-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(6, 8, 14, 0.64);
+  backdrop-filter: blur(8px);
+  animation: smart-fade 200ms ease both;
+}
+
+.smart-loading {
+  position: relative;
+  width: min(368px, 88vw);
+  padding: 28px 24px 22px;
+  text-align: center;
+  border: 1px solid var(--accent-line);
+  border-radius: 16px;
+  background:
+    radial-gradient(320px 160px at 50% 0%, var(--accent-soft), transparent 72%),
+    var(--chrome-2);
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.5),
+    0 0 44px rgba(77, 132, 255, 0.16);
+  animation: smart-loading-in 240ms var(--ease-out) both;
+}
+
+.smart-loading.error {
+  border-color: rgba(255, 107, 107, 0.35);
+  background:
+    radial-gradient(320px 160px at 50% 0%, rgba(255, 107, 107, 0.1), transparent 72%),
+    var(--chrome-2);
+}
+
+.smart-loading-ring {
+  display: block;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--accent);
+  box-shadow: 0 0 26px var(--accent-soft);
+  animation: spin 0.9s linear infinite;
+}
+
+.smart-loading-error {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: rgba(255, 107, 107, 0.12);
+  color: var(--danger);
+}
+
+.smart-loading-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.smart-loading-book {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.smart-loading-stage {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.smart-loading-detail {
+  margin-top: 5px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+  word-break: break-word;
+}
+
+.smart-loading-hint {
+  margin-top: 12px;
+  font-size: 10.5px;
+  color: var(--ink-faint);
+}
+
+.smart-loading-error-text {
+  max-height: 84px;
+  margin-top: 10px;
+  overflow-y: auto;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--danger);
+  text-align: left;
+  word-break: break-word;
+}
+
+.smart-loading-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ---------------------------------------------------------------- states */
+
+.smart-skeleton {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.smart-skeleton span {
+  flex: 0 0 196px;
+  height: 86px;
+  border-radius: 12px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.035),
+    rgba(255, 255, 255, 0.085),
+    rgba(255, 255, 255, 0.035)
+  );
+  background-size: 220% 100%;
+  animation: smart-shimmer 1.8s linear infinite;
+}
+
+.smart-skeleton span.wide {
+  flex-basis: 100%;
+  height: 180px;
+}
+
+.smart-empty {
+  padding: 52px 20px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.smart-empty .btn {
+  margin-top: 6px;
+}
+
+/* ---------------------------------------------------------------- motion */
+
+@keyframes smart-glow {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.82;
+  }
+}
+
+@keyframes smart-action-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes smart-focus-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes smart-picker-in {
+  from {
+    opacity: 0.4;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes smart-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes smart-loading-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes smart-shimmer {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .smart-card,
+  .smart-card.on,
+  .smart-card.on::after,
+  .smart-focus,
+  .smart-action,
+  .smart-picker,
+  .smart-picker-backdrop,
+  .smart-loading,
+  .smart-loading-backdrop,
+  .smart-skeleton span {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .smart-card {
+    flex-basis: 164px;
+  }
+  .smart-actions {
+    grid-template-columns: 1fr;
+  }
+  .smart-picker {
+    width: min(360px, 94vw);
+  }
+}
+
+@media (max-width: 560px) {
+  .smart-head {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .smart-head .grow {
+    display: none;
+  }
+  .smart-count {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .smart-card {
+    flex-basis: 148px;
+  }
+  .smart-card-cover {
+    width: 40px;
+    height: 56px;
+  }
+  .smart-focus {
+    padding: 14px;
+  }
+  .smart-focus-cover {
+    width: 64px;
+    height: 88px;
+  }
+  .smart-focus h2 {
+    font-size: 17px;
+  }
+  .smart-skeleton span {
+    flex-basis: 148px;
+  }
+}

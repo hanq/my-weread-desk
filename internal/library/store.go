@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 11
+const schemaVersion = 12
 
 // Store wraps the SQLite cache. It intentionally uses a single connection:
 // the app is a single user desktop client and serialising writes removes every
@@ -73,6 +73,14 @@ func (s *Store) migrate() error {
 			shelf_order INTEGER NOT NULL DEFAULT 0,
 			in_shelf INTEGER NOT NULL DEFAULT 0,
 			format TEXT NOT NULL DEFAULT '',
+			updated_at INTEGER NOT NULL DEFAULT 0
+		)`,
+		// AI classification is kept out of the book row so a shelf sync can never
+		// overwrite a reader's manual correction.
+		`CREATE TABLE IF NOT EXISTS book_ai (
+			book_id TEXT PRIMARY KEY,
+			kind TEXT NOT NULL DEFAULT '',
+			kind_source TEXT NOT NULL DEFAULT '',
 			updated_at INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE TABLE IF NOT EXISTS shelf_group (

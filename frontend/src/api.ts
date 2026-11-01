@@ -4,9 +4,9 @@
 
 import type {
   AuthState, Book, BookDetail, Chapter, CursorInfo, DeviceReadStats, DownloadState, LoginPoll, MPArticle,
-  AISource, Branch, BranchDetail, BranchScene, CanonAnchor, Intent, Note, Position, Progress,
+  AIStatus, AISource, BookKind, Branch, BranchDetail, BranchScene, CanonAnchor, Intent, Note, Position, Progress,
   QRCode, RAGStatus, ReadStats, ReaderSession, SearchResult, Settings, ShelfGroup,
-  StoryGraphStatus, StoryScene, Theme, WindowState, WorldItem, WorldSheet, WorldStat,
+  SmartBook, StoryGraphStatus, StoryScene, Theme, WindowState, WorldItem, WorldSheet, WorldStat,
 } from './types';
 
 type AnyFn = (...args: unknown[]) => Promise<unknown>;
@@ -83,6 +83,9 @@ export const api = {
   dropRagIndex: (bookId: string) => call<void>('DropRAGIndex', bookId),
   askBook: (bookId: string, question: string) => call<string>('AskBook', bookId, question),
   cancelAsk: (requestId: string) => call<void>('CancelAsk', requestId),
+  aiStatus: (bookId: string) => call<AIStatus>('AIStatus', bookId),
+  setBookKind: (bookId: string, kind: BookKind) => call<BookKind>('SetBookKind', bookId, kind),
+  smartBooks: () => call<SmartBook[]>('SmartBooks'),
 
   // story graph
   buildStoryGraph: (bookId: string) => call<StoryGraphStatus>('BuildStoryGraph', bookId),

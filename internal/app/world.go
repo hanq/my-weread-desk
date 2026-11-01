@@ -94,6 +94,15 @@ func (a *App) DeriveWorldSheet(bookID string) (*story.WorldSheet, error) {
 	if !a.aiReady() {
 		return nil, errors.New("需要先启用 AI 并确认正文片段发送")
 	}
+	if err := a.requireFiction(bookID); err != nil {
+		return nil, err
+	}
+	if err := a.requireTextIndex(bookID); err != nil {
+		return nil, err
+	}
+	if err := a.requireScenes(bookID); err != nil {
+		return nil, err
+	}
 	scenes, err := a.store.StoryScenes(bookID)
 	if err != nil {
 		return nil, err

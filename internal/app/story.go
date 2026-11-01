@@ -246,6 +246,16 @@ func (b *storyBuilder) cancelRun(bookID string) {
 // BuildStoryGraph starts (or resumes) scene extraction. It returns immediately;
 // progress arrives through the "story:progress" event.
 func (a *App) BuildStoryGraph(bookID string) (StoryGraphStatus, error) {
+	bookID = strings.TrimSpace(bookID)
+	if bookID == "" {
+		return StoryGraphStatus{}, errors.New("缺少书籍 ID")
+	}
+	if err := a.requireFiction(bookID); err != nil {
+		return StoryGraphStatus{}, err
+	}
+	if err := a.requireTextIndex(bookID); err != nil {
+		return StoryGraphStatus{}, err
+	}
 	return a.storyIndex.start(bookID)
 }
 
@@ -360,6 +370,15 @@ func (a *App) SuggestAnchors(bookID string) ([]story.CanonAnchor, error) {
 	}
 	if !a.aiReady() {
 		return nil, errors.New("需要先启用 AI 并确认正文片段发送")
+	}
+	if err := a.requireFiction(bookID); err != nil {
+		return nil, err
+	}
+	if err := a.requireTextIndex(bookID); err != nil {
+		return nil, err
+	}
+	if err := a.requireScenes(bookID); err != nil {
+		return nil, err
 	}
 	scenes, err := a.store.StoryScenes(bookID)
 	if err != nil {

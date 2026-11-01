@@ -22,7 +22,7 @@ func (a *App) Books() []weread.Book {
 	if books == nil {
 		return []weread.Book{}
 	}
-	return books
+	return a.enrichBookKinds(books)
 }
 
 // SyncShelf pulls the cloud shelf and reconciles the cache.
@@ -52,7 +52,7 @@ func (a *App) syncShelf(ctx context.Context) ([]weread.Book, error) {
 		cached, cerr := a.store.Books()
 		if cerr == nil && len(cached) > 0 {
 			a.logf("同步书架失败，使用本地缓存：%v", err)
-			return cached, nil
+			return a.enrichBookKinds(cached), nil
 		}
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (a *App) syncShelf(ctx context.Context) ([]weread.Book, error) {
 		a.logf("同步书架分组失败：%v", err)
 	}
 	_ = a.store.SetMeta("shelfSyncedAt", fmt.Sprint(time.Now().Unix()))
-	return books, nil
+	return a.enrichBookKinds(books), nil
 }
 
 // Groups returns the cached shelf folders immediately (never blocks on the
@@ -168,6 +168,15 @@ func (a *App) Search(keyword, scope string, page int) (*weread.SearchResult, err
 	if err != nil {
 		return nil, err
 	}
+	if res == nil {
+		return &weread.SearchResult{Query: keyword, Books: []weread.Book{}}, nil
+	}
+	// Empty results from both channels are nil slices, which JSON-encodes as
+	// null. The UI expects an array, so normalise here as well as defensively
+	// on the frontend.
+	if res.Books == nil {
+		res.Books = []weread.Book{}
+	}
 	for _, b := range res.Books {
 		_ = a.store.UpsertBook(b)
 	}
@@ -261,6 +270,7 @@ func (a *App) BookDetail(bookID string) (*BookDetail, error) {
 			detail.Notes = notes
 		}
 	}
+	detail.Book = a.enrichBookKind(detail.Book)
 	return detail, nil
 }
 
@@ -366,31 +376,59 @@ func (a *App) Stats(mode string, baseTime int64) (*weread.ReadStats, error) {
 
 // MPArticles lists an official account's articles.
 func (a *App) MPArticles(accountID string, offset int) ([]weread.MPArticle, error) {
-	ctx, cancel := context.WithTimeout(a.ctxOrBackground(), 30*time.Second)
-	defer cancel()
-	articles, err := a.eink.MPArticles(ctx, accountID, offset)
+	einkCtx, einkCancel := context.WithTimeout(a.ctxOrBackground(), 20*time.Second)
+	articles, einkErr := a.eink.MPArticles(einkCtx, accountID, offset)
+	einkCancel()
+
+	// The E-Ink MP list is not available to every credential/session and may
+	// return an empty page while the web cookie session still has the articles.
+	// Try the web channel's /web/mp/articles endpoint before showing “暂无文章”.
+	if len(articles) == 0 && a.webSession() {
+		webCtx, webCancel := context.WithTimeout(a.ctxOrBackground(), 20*time.Second)
+		webArticles, webErr := a.web.MPArticles(webCtx, accountID, offset)
+		webCancel()
+		if webErr == nil {
+			if webArticles == nil {
+				webArticles = []weread.MPArticle{}
+			}
+			return webArticles, nil
+		}
+		if einkErr == nil {
+			einkErr = webErr
+		}
+	}
+
 	// The renderer treats this as an array; a nil slice marshals as null and
 	// crashes it when the account has no articles yet.
 	if articles == nil {
 		articles = []weread.MPArticle{}
 	}
-	return articles, err
+	return articles, einkErr
 }
 
 // OpenMPArticle loads an official-account article as blocks.
 func (a *App) OpenMPArticle(reviewID string) (*weread.ChapterContent, error) {
+	accountID := mpAccountID(reviewID)
 	if cached, blocks, err := a.store.MPArticle(reviewID); err == nil {
 		if blocks == nil {
 			blocks = []weread.Block{}
 		}
-		return &weread.ChapterContent{
-			BookID:     cached.Account,
-			ChapterUID: 0,
-			Title:      cached.Title,
-			Format:     "mp",
-			Blocks:     blocks,
-			FetchedAt:  cached.CreateTime,
-		}, nil
+		if accountID == "" {
+			accountID = cached.Account
+		}
+		// Older caches may contain only lazy-load placeholders. In that case
+		// refetch once; otherwise rewrite direct image URLs to the proxy.
+		if accountID != "" && !mpBlocksNeedRefresh(blocks) {
+			rewriteMPImageSources(blocks, accountID)
+			return &weread.ChapterContent{
+				BookID:     accountID,
+				ChapterUID: 0,
+				Title:      cached.Title,
+				Format:     "mp",
+				Blocks:     blocks,
+				FetchedAt:  cached.CreateTime,
+			}, nil
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(a.ctxOrBackground(), 45*time.Second)
@@ -399,17 +437,75 @@ func (a *App) OpenMPArticle(reviewID string) (*weread.ChapterContent, error) {
 	if err != nil {
 		return nil, err
 	}
-	blocks := content.Parse(html, nil)
+
+	var resolve content.ImageResolver
+	if accountID != "" {
+		resolve = func(src string) (string, bool) {
+			remote, ok := remoteImageSrc(src)
+			if !ok {
+				return "", false
+			}
+			return imageProxyURL(accountID, 0, remote), true
+		}
+	}
+	blocks := content.Parse(html, resolve)
 	if blocks == nil {
 		blocks = []weread.Block{}
 	}
 	out := &weread.ChapterContent{
-		Title: title, Format: "mp", Blocks: blocks, FetchedAt: time.Now().Unix(),
+		BookID: accountID, Title: title, Format: "mp", Blocks: blocks, FetchedAt: time.Now().Unix(),
 	}
 	_ = a.store.SaveMPArticle(weread.MPArticle{
-		ReviewID: reviewID, Title: title, CreateTime: time.Now().Unix(),
+		ReviewID: reviewID, Account: accountID, Title: title, CreateTime: time.Now().Unix(),
 	}, blocks)
 	return out, nil
+}
+
+// mpAccountID extracts MP_WXS_<account> from an article review id. The review
+// id is MP_WXS_<account>_<article>; older cached rows may not carry Account.
+func mpAccountID(reviewID string) string {
+	const prefix = "MP_WXS_"
+	if !strings.HasPrefix(reviewID, prefix) {
+		return ""
+	}
+	rest := strings.TrimPrefix(reviewID, prefix)
+	if i := strings.Index(rest, "_"); i > 0 {
+		return prefix + rest[:i]
+	}
+	return reviewID
+}
+
+// mpBlocksNeedRefresh detects caches written before lazy image URLs were
+// preferred. Missing blocks are left alone: refetching will not recover them.
+func mpBlocksNeedRefresh(blocks []weread.Block) bool {
+	for _, block := range blocks {
+		if block.Kind != "image" {
+			continue
+		}
+		src := strings.TrimSpace(block.Src)
+		if src == "" || strings.HasPrefix(src, "data:") {
+			return true
+		}
+	}
+	return false
+}
+
+// rewriteMPImageSources turns cached direct CDN URLs into proxy routes so the
+// article reader can load hotlink-protected mmbiz images through the app.
+func rewriteMPImageSources(blocks []weread.Block, accountID string) {
+	for i := range blocks {
+		if blocks[i].Kind != "image" {
+			continue
+		}
+		src := strings.TrimSpace(blocks[i].Src)
+		if src == "" || strings.HasPrefix(src, "data:") ||
+			strings.HasPrefix(src, "/media/") || strings.HasPrefix(src, "/media-proxy?") {
+			continue
+		}
+		if remote, ok := remoteImageSrc(src); ok {
+			blocks[i].Src = imageProxyURL(accountID, 0, remote)
+		}
+	}
 }
 
 // CacheCoverage reports how much of a book is available offline.

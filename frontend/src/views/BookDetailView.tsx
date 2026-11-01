@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { api } from '../api';
 import { Icon } from '../icons';
+import { BOOK_KIND_OPTIONS, bookKindLabel, canTraverse, firstReadableChapter } from '../bookKind';
 import { navigate, store, toast, useApp } from '../store';
-import type { BookDetail, Chapter } from '../types';
+import type { BookDetail, BookKind, Chapter } from '../types';
+import { coverUrl, handleCoverError } from '../bookCover';
 
 type Tab = 'toc' | 'intro' | 'notes';
 
@@ -31,7 +33,7 @@ export function BookDetailView({ bookId }: { bookId: string }) {
   }, [bookId]);
 
   const inShelf = useMemo(() => app.books.some((b) => b.id === bookId), [app.books, bookId]);
-  const progressChapter = detail?.progress?.chapterUid ?? detail?.chapters[0]?.uid ?? 0;
+  const progressChapter = detail?.progress?.chapterUid || firstReadableChapter(detail?.chapters ?? [])?.uid || 0;
 
   if (loading) {
     return (
@@ -102,6 +104,19 @@ export function BookDetailView({ bookId }: { bookId: string }) {
       .catch((e: unknown) => toast(String((e as Error).message || e), 'error'));
   };
 
+  const updateKind = (kind: BookKind) => {
+    void api
+      .setBookKind(bookId, kind)
+      .then((next) => {
+        setDetail((prev) =>
+          prev ? { ...prev, book: { ...prev.book, kind: next, kindSource: 'user' } } : prev,
+        );
+        api.books().then((list) => store.set({ books: list })).catch(() => {});
+        toast('已更新 AI 类型', 'success');
+      })
+      .catch((e: unknown) => toast(String((e as Error).message || e), 'error'));
+  };
+
   return (
     <>
       <div className="page-head">
@@ -115,8 +130,13 @@ export function BookDetailView({ bookId }: { bookId: string }) {
       <div className="detail">
         <aside className="detail-side">
           <div className="detail-cover">
-            {book.cover ? (
-              <img src={book.cover} alt="" referrerPolicy="no-referrer" />
+            {coverUrl(book) ? (
+              <img
+                src={coverUrl(book)}
+                alt=""
+                referrerPolicy="no-referrer"
+                onError={(e) => handleCoverError(book, e)}
+              />
             ) : (
               <div className="detail-cover-fallback">{book.title}</div>
             )}
@@ -131,6 +151,7 @@ export function BookDetailView({ bookId }: { bookId: string }) {
               {book.wordCount > 0 ? <span>· {formatWords(book.wordCount)}</span> : null}
               {book.rating > 0 ? <span>· ★ {book.rating.toFixed(1)}</span> : null}
               {book.publisher ? <span>· {book.publisher}</span> : null}
+              {book.kind ? <span className="chip">AI 类型 · {bookKindLabel(book.kind)}</span> : null}
             </div>
             {detail.progress && detail.progress.percent > 0 ? (
               <div className="chip accent">已读 {detail.progress.percent.toFixed(1)}%</div>
@@ -142,13 +163,53 @@ export function BookDetailView({ bookId }: { bookId: string }) {
               <Icon name="book" size={15} />
               {readLabel}
             </button>
-            <button className="btn" onClick={() => read(detail.chapters[0]?.uid ?? 0, true)}>
+            <button className="btn" onClick={() => read(firstReadableChapter(detail.chapters)?.uid ?? 0, true)}>
               从头读
             </button>
             <button className="btn" onClick={startDownload} disabled={download?.running}>
               <Icon name="download" size={15} />
               {download?.running ? '下载中…' : detail.cachedCount > 0 ? '补齐剩余章节' : '下载全书'}
             </button>
+            {!book.isAudio && !book.isMp ? (
+              <>
+                <button
+                  className="btn btn-ghost"
+                  title="基于本书原文检索并定位情节"
+                  onClick={() => navigate({ name: 'assistant', bookId })}
+                >
+                  <Icon name="sparkle" size={15} /> 问助手
+                </button>
+                {canTraverse(book.kind) ? (
+                  <button
+                    className="btn btn-ghost"
+                    title="把本书拆成时间线，进入平行世界"
+                    onClick={() => navigate({ name: 'traversal', bookId })}
+                  >
+                    <Icon name="clock" size={15} /> 穿越此书
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+            {!book.isAudio && !book.isMp ? (
+              <label className="detail-kind">
+                <span>AI 类型</span>
+                <select
+                  value={book.kind ?? 'other'}
+                  onChange={(e) => void updateKind(e.target.value as BookKind)}
+                >
+                  {BOOK_KIND_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {!book.isAudio && !book.isMp && !canTraverse(book.kind) ? (
+              <span className="detail-kind-note">
+                故事穿越只对小说开放；如果识别有误，请把 AI 类型改为「小说」。
+              </span>
+            ) : null}
             <button className="btn btn-ghost" onClick={toggleShelf}>
               {inShelf ? '移出书架' : '加入书架'}
             </button>

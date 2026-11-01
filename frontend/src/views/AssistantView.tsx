@@ -5,7 +5,7 @@ import { Icon } from '../icons';
 import { navigate, store, toast, useApp } from '../store';
 import type { AISettings, AISource, AskEvent, RAGStatus } from '../types';
 
-export function AssistantView() {
+export function AssistantView({ initialBookId }: { initialBookId?: string } = {}) {
   const app = useApp();
   const books = useMemo(() => app.books.filter((b) => !b.isAudio && !b.isMp), [app.books]);
 
@@ -25,6 +25,7 @@ export function AssistantView() {
 
   const requestRef = useRef<string | null>(null);
   const answerRef = useRef('');
+  const appliedInitial = useRef('');
 
   const ai = app.settings?.ai;
   const configured = Boolean(ai?.enabled && ai.baseUrl.trim() && ai.model.trim() && ai.consent);
@@ -33,13 +34,22 @@ export function AssistantView() {
     if (!form && ai) setForm({ ...ai });
   }, [ai, form]);
 
-  // Start on the book the user read last, so the assistant opens in context.
+  // The shelf and the detail page can open the assistant with a specific book.
+  // Apply that book once so the reader can still switch books afterwards.
   useEffect(() => {
-    if (bookId || books.length === 0) return;
+    if (books.length === 0) return;
+    if (initialBookId && books.some((b) => b.id === initialBookId)) {
+      if (appliedInitial.current !== initialBookId) {
+        appliedInitial.current = initialBookId;
+        setBookId(initialBookId);
+      }
+      return;
+    }
+    if (bookId) return;
     const last = app.settings?.lastBookId;
     const pick = books.find((b) => b.id === last) ?? books[0];
     setBookId(pick.id);
-  }, [app.settings?.lastBookId, bookId, books]);
+  }, [initialBookId, app.settings?.lastBookId, bookId, books]);
 
   useEffect(() => {
     if (!bookId) return;
@@ -144,8 +154,8 @@ export function AssistantView() {
   return (
     <>
       <div className="page-head">
-        <h1>助手</h1>
-        <span className="sub">{book ? book.title : '选择一本书开始提问'}</span>
+        <h1>读书助手</h1>
+        <span className="sub">{book ? `原文问答 · 《${book.title}》` : '原文问答 · 只依据书中原文'}</span>
         <div className="grow" />
         <select className="assistant-select" value={bookId} onChange={(e) => setBookId(e.target.value)}>
           {books.map((b) => (
@@ -154,6 +164,13 @@ export function AssistantView() {
             </option>
           ))}
         </select>
+        <button
+          className="btn btn-ghost"
+          title="改写剧情、分叉世界线请使用故事穿越"
+          onClick={() => navigate({ name: 'traversal', bookId: bookId || undefined })}
+        >
+          <Icon name="clock" size={14} /> 故事穿越
+        </button>
         <button className="btn btn-ghost" onClick={() => setShowSetup((v) => !v)}>
           <Icon name="settings" size={14} /> 配置
         </button>
@@ -255,6 +272,7 @@ export function AssistantView() {
               <Icon name="sparkle" size={30} />
               <p>问这本书记了什么，或者让助手定位某个情节。</p>
               <p className="faint">回答只依据书中原文，并附上可跳转的段落引用。</p>
+              <p className="faint">需要改写剧情、分叉世界线，请使用「故事穿越」。</p>
             </div>
           ) : null}
 

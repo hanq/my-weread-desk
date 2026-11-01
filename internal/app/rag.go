@@ -11,6 +11,7 @@ import (
 
 	"my-weread-desk/internal/ai"
 	"my-weread-desk/internal/config"
+	"my-weread-desk/internal/library"
 	"my-weread-desk/internal/rag"
 	"my-weread-desk/internal/weread"
 )
@@ -98,13 +99,19 @@ func (a *App) RAGStatus(bookID string) RAGStatus {
 	if err != nil || meta == nil {
 		return RAGStatus{BookID: bookID, Status: "none"}
 	}
+	status := meta.Status
+	errText := meta.Error
+	if status == "ready" && meta.ChunkerVersion != library.RAGChunkerVersion {
+		status = "stale"
+		errText = "分块版本已更新，请重建索引"
+	}
 	return RAGStatus{
 		BookID:     meta.BookID,
-		Status:     meta.Status,
-		Indexed:    meta.Status == "ready" && meta.ChunkCount > 0,
+		Status:     status,
+		Indexed:    status == "ready" && meta.ChunkCount > 0,
 		ChunkCount: meta.ChunkCount,
 		CharCount:  meta.CharCount,
-		Error:      meta.Error,
+		Error:      errText,
 		UpdatedAt:  meta.UpdatedAt,
 	}
 }
@@ -140,6 +147,9 @@ func (a *App) AskBook(bookID, question string) (string, error) {
 	}
 	if strings.TrimSpace(settings.AI.BaseURL) == "" || strings.TrimSpace(settings.AI.Model) == "" {
 		return "", errors.New("请先填写 AI 服务地址与模型")
+	}
+	if err := a.requireTextIndex(bookID); err != nil {
+		return "", err
 	}
 
 	id := fmt.Sprintf("ask-%d", atomic.AddInt64(&askSeq, 1))

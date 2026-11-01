@@ -2,18 +2,22 @@ package weread
 
 // Book is a shelf entry or a search result.
 type Book struct {
-	ID        string  `json:"id"`
-	Title     string  `json:"title"`
-	Author    string  `json:"author"`
-	Cover     string  `json:"cover"`
-	Category  string  `json:"category"`
-	Intro     string  `json:"intro"`
-	Rating    float64 `json:"rating"`
-	RatingN   int     `json:"ratingCount"`
-	WordCount int     `json:"wordCount"`
-	Finished  bool    `json:"finished"`
-	Secret    bool    `json:"secret"`
-	IsMP      bool    `json:"isMp"`
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Author   string `json:"author"`
+	Cover    string `json:"cover"`
+	Category string `json:"category"`
+	// Kind and KindSource are filled by the app's AI classification layer. They
+	// are not part of the WeRead payload and stay empty in protocol responses.
+	Kind       string  `json:"kind,omitempty"`
+	KindSource string  `json:"kindSource,omitempty"`
+	Intro      string  `json:"intro"`
+	Rating     float64 `json:"rating"`
+	RatingN    int     `json:"ratingCount"`
+	WordCount  int     `json:"wordCount"`
+	Finished   bool    `json:"finished"`
+	Secret     bool    `json:"secret"`
+	IsMP       bool    `json:"isMp"`
 	// IsAudio marks a shelf entry that is an audiobook album. The reader
 	// cannot open these: they have tracks, not chapters, and the artwork is
 	// already carried by Cover.

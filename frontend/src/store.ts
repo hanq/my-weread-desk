@@ -9,11 +9,12 @@ export type Route =
   | { name: 'shelf' }
   | { name: 'search' }
   | { name: 'stats' }
-  | { name: 'assistant' }
-  | { name: 'traversal' }
+  | { name: 'smart'; bookId?: string }
+  | { name: 'assistant'; bookId?: string }
+  | { name: 'traversal'; bookId?: string }
   | { name: 'branch'; branchId: string }
   | { name: 'settings' }
-  | { name: 'mp' }
+  | { name: 'mp'; bookId?: string }
   | { name: 'detail'; bookId: string }
   | { name: 'reader'; bookId: string; chapterUid: number; fromStart?: boolean };
 

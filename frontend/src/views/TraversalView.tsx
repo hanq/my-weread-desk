@@ -2,12 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { api, events } from '../api';
 import { Icon } from '../icons';
+import { canTraverse } from '../bookKind';
 import { navigate, toast, useApp } from '../store';
 import type { CanonAnchor, StoryGraphStatus, StoryScene } from '../types';
 
-export function TraversalView() {
+export function TraversalView({ initialBookId }: { initialBookId?: string } = {}) {
   const app = useApp();
-  const books = useMemo(() => app.books.filter((b) => !b.isAudio && !b.isMp), [app.books]);
+  const books = useMemo(
+    () => app.books.filter((b) => !b.isAudio && !b.isMp && canTraverse(b.kind)),
+    [app.books],
+  );
 
   const [bookId, setBookId] = useState('');
   const [status, setStatus] = useState<StoryGraphStatus | null>(null);
@@ -19,13 +23,24 @@ export function TraversalView() {
 
   const bookRef = useRef('');
   bookRef.current = bookId;
+  const appliedInitial = useRef('');
 
+  // Opening from the shelf or detail page should land on that book once, while
+  // still allowing the reader to switch to another book inside the view.
   useEffect(() => {
-    if (bookId || books.length === 0) return;
+    if (books.length === 0) return;
+    if (initialBookId && books.some((b) => b.id === initialBookId)) {
+      if (appliedInitial.current !== initialBookId) {
+        appliedInitial.current = initialBookId;
+        setBookId(initialBookId);
+      }
+      return;
+    }
+    if (bookId) return;
     const last = app.settings?.lastBookId;
     const pick = books.find((b) => b.id === last) ?? books[0];
     setBookId(pick.id);
-  }, [app.settings?.lastBookId, bookId, books]);
+  }, [initialBookId, app.settings?.lastBookId, bookId, books]);
 
   const reload = async (id: string) => {
     const [nextStatus, nextScenes, nextAnchors] = await Promise.all([
@@ -157,11 +172,36 @@ export function TraversalView() {
     }
   };
 
+  if (books.length === 0) {
+    return (
+      <>
+        <div className="page-head">
+          <h1>故事穿越</h1>
+          <span className="sub">时间线 · 平行世界</span>
+        </div>
+        <div className="page-body">
+          <div className="empty">
+            <Icon name="clock" size={30} />
+            <p>没有可穿越的小说。</p>
+            <p className="faint">
+              故事穿越只支持虚构叙事。如果这本书是小说，请在书籍详情里把 AI 类型改为「小说」。
+            </p>
+            <button className="btn" onClick={() => navigate({ name: 'shelf' })}>
+              回到书架
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="page-head">
-        <h1>穿越</h1>
-        <span className="sub">{scenes.length > 0 ? `${scenes.length} 幕` : '把书拆成时间线'}</span>
+        <h1>故事穿越</h1>
+        <span className="sub">
+          {scenes.length > 0 ? `${scenes.length} 幕 · 时间线与平行世界` : '时间线 · 平行世界'}
+        </span>
         <div className="grow" />
         <select className="assistant-select" value={bookId} onChange={(e) => setBookId(e.target.value)}>
           {books.map((b) => (
@@ -170,6 +210,13 @@ export function TraversalView() {
             </option>
           ))}
         </select>
+        <button
+          className="btn btn-ghost"
+          title="查找原文事实、定位情节请使用读书助手"
+          onClick={() => navigate({ name: 'assistant', bookId: bookId || undefined })}
+        >
+          <Icon name="sparkle" size={14} /> 读书助手
+        </button>
         {running ? (
           <button className="btn btn-ghost" onClick={() => void api.cancelStoryGraph(bookId)}>
             停止
@@ -258,6 +305,7 @@ export function TraversalView() {
             <Icon name="clock" size={30} />
             <p>时间线还没有建立。</p>
             <p className="faint">需要先下载本书的章节。未配置 AI 时，每一章直接作为一个场景。</p>
+            <p className="faint">只想查原文事实，请回到「读书助手」。</p>
           </div>
         ) : (
           <div className="timeline">

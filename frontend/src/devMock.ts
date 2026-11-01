@@ -3,7 +3,7 @@
 // account. It is imported only when `import.meta.env.DEV` and no bindings
 // exist, so production builds never include the path.
 
-import type { Block, Book, Chapter, ReaderSession, Settings, Theme } from './types';
+import type { Block, Book, BookKind, Chapter, ReaderSession, Settings, Theme } from './types';
 
 const theme: Theme = {
   name: '纸白',
@@ -76,6 +76,7 @@ const titles = [
   ['中国历代政治得失', '钱穆'],
   ['局外人', '阿尔贝·加缪'],
   ['深度工作', '卡尔·纽波特'],
+  ['高等数学（第七版）', '同济大学数学系'],
 ] as const;
 
 const books: Book[] = titles.map(([title, author], i) => ({
@@ -83,7 +84,7 @@ const books: Book[] = titles.map(([title, author], i) => ({
   title,
   author,
   cover: '',
-  category: i % 3 === 0 ? '历史' : '社科',
+  category: i === 12 ? '教材' : i % 3 === 0 ? '历史' : '社科',
   intro: '这是一本用于界面预览的示例书籍。真实内容来自你的微信读书账号，只会缓存到本机。',
   rating: 8.1 + (i % 9) / 10,
   ratingCount: 1200 + i * 37,
@@ -91,10 +92,25 @@ const books: Book[] = titles.map(([title, author], i) => ({
   finished: i === 2,
   secret: false,
   isMp: i === 11,
+  kind: i === 4 || i === 10 ? 'fiction' : i === 11 ? 'other' : i === 12 ? 'textbook' : 'nonfiction',
+  kindSource: 'auto',
   lastRead: 1760000000 - i * 86400,
   paid: false,
   updateAt: 1760000000,
 }));
+
+const smartIds = new Set<string>([books[0].id, books[4].id, books[12].id]);
+
+const smartStatus = (book: Book) => {
+  const smart = smartIds.has(book.id);
+  const fiction = book.kind === 'fiction';
+  return {
+    text: smart ? { status: 'ready', detail: '示例索引', count: 24 } : { status: 'none' },
+    scenes: smart && fiction ? { status: 'ready', detail: '12 幕', count: 12 } : { status: 'none' },
+    world: smart && fiction ? { status: 'ready', detail: '3 项属性', count: 3 } : { status: 'none' },
+    capabilities: { ask: smart, immerse: smart && fiction, rewrite: smart && fiction },
+  };
+};
 
 const chapter = (i: number): Chapter => ({
   uid: 1000 + i,
@@ -192,6 +208,46 @@ const handlers: Record<string, (...args: any[]) => any> = {
   RenewSession: () => undefined,
   Books: () => books,
   SyncShelf: () => books,
+  AIStatus: (id: string) => {
+    const book = books.find((b) => b.id === id) ?? books[0];
+    const status = smartStatus(book);
+    return {
+      bookId: book.id,
+      kind: book.kind ?? 'other',
+      kindSource: book.kindSource ?? 'auto',
+      ...status,
+    };
+  },
+  SmartBooks: () =>
+    books
+      .filter((book) => smartIds.has(book.id))
+      .map((book) => {
+        const status = smartStatus(book);
+        return {
+          book,
+          kind: book.kind ?? 'other',
+          kindSource: book.kindSource ?? 'auto',
+          ...status,
+          branchCount: status.capabilities.rewrite ? 1 : 0,
+          updatedAt: 1760000000,
+        };
+      }),
+  IndexBook: (id: string) => {
+    smartIds.add(id);
+    return { bookId: id, status: 'ready', indexed: true, chunkCount: 24, charCount: 24000, error: '', updatedAt: 1760000000 };
+  },
+  RAGStatus: (id: string) => {
+    const smart = smartIds.has(id);
+    return { bookId: id, status: smart ? 'ready' : 'none', indexed: smart, chunkCount: smart ? 24 : 0, charCount: smart ? 24000 : 0, error: '', updatedAt: 1760000000 };
+  },
+  SetBookKind: (id: string, kind: BookKind) => {
+    const book = books.find((b) => b.id === id);
+    if (book) {
+      book.kind = kind;
+      book.kindSource = 'user';
+    }
+    return kind;
+  },
   Search: (kw: string) => ({ total: books.length, hasMore: false, sid: '', query: kw, books: books.filter((b) => b.title.includes(kw) || !kw) }),
   BookDetail: (id: string) => ({ book: books.find((b) => b.id === id) ?? books[0], chapters, progress: { bookId: id, chapterUid: chapters[0].uid, chapterIndex: 1, offset: 220, percent: 12, updateTime: 1760000000 }, cachedCount: 3, chapterCount: chapters.length, inShelf: true, notes: [{ id: 'n1', bookId: id, chapterUid: chapters[0].uid, chapterName: chapters[0].title, text: '理解约束，比记住结论更重要。', content: '', range: '', color: 1, createTime: 1760000000, type: 0 }], offline: false }),
   Chapters: () => chapters,

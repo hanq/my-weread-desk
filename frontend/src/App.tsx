@@ -4,6 +4,7 @@ import { api, events, runtime } from './api';
 import { Icon } from './icons';
 import { navigate, store, toast, useApp } from './store';
 import { SKIN_OPTIONS, skinLabel } from './skins/registry';
+import { isShelfMotif, setShelfMotif, shelfMotifLabel, useShelfMotif } from './skins/shelfMotifs';
 import { TitleBar } from './components/TitleBar';
 import { Sidebar } from './components/Sidebar';
 import { LoginView } from './views/LoginView';
@@ -13,6 +14,7 @@ import { BookDetailView } from './views/BookDetailView';
 import { ReaderView } from './views/ReaderView';
 import { SettingsView } from './views/SettingsView';
 import { StatsView } from './views/StatsView';
+import { SmartView } from './views/SmartView';
 import { AssistantView } from './views/AssistantView';
 import { TraversalView } from './views/TraversalView';
 import { BranchView } from './views/BranchView';
@@ -21,6 +23,7 @@ import type { DownloadState, Settings } from './types';
 
 export default function App() {
   const app = useApp();
+  const carrier = useShelfMotif();
   const [booting, setBooting] = useState(true);
   const [bootError, setBootError] = useState('');
   const [navOpen, setNavOpen] = useState(false);
@@ -74,6 +77,9 @@ export default function App() {
     const offHotkey = events.on('hotkey', (name: string) => {
       void handleHotkey(name);
     });
+    const offMenu = events.on('menu', (action: string) => {
+      void handleMenu(action);
+    });
     const offDownload = events.on('download', (state: DownloadState) => {
       const downloads = { ...store.get().downloads, [state.bookId]: state };
       store.set({ downloads });
@@ -89,6 +95,7 @@ export default function App() {
     });
     return () => {
       offHotkey?.();
+      offMenu?.();
       offDownload?.();
       offLog?.();
     };
@@ -197,7 +204,7 @@ export default function App() {
 
   if (!app.auth?.loggedIn) {
     return (
-      <div className="app-root" style={{ border: 0 }}>
+      <div className="app-root" data-carrier={carrier} style={{ border: 0 }}>
         <TitleBar />
         <LoginView />
       </div>
@@ -207,7 +214,10 @@ export default function App() {
   const route = app.route;
 
   if (route.name === 'reader') {
-    const transparent = Boolean(app.settings?.disguise?.floating) || app.settings?.theme.background === 'transparent';
+    const transparent =
+      Boolean(app.settings?.disguise?.floating) ||
+      app.settings?.theme.background === 'transparent' ||
+      app.settings?.theme.surface === 'transparent';
     return (
       <div className="window-frame" style={{ background: transparent ? 'transparent' : app.settings?.theme.background ?? '#f5f2ea' }}>
         <ReaderView
@@ -221,7 +231,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-root">
+    <div className="app-root" data-carrier={carrier}>
       <TitleBar onOpenNav={() => setNavOpen((v) => !v)} />
       <div className={`shell${navOpen ? ' nav-open' : ''}`}>
         <Sidebar onNavigate={() => setNavOpen(false)} />
@@ -231,10 +241,11 @@ export default function App() {
           {route.name === 'detail' ? <BookDetailView bookId={route.bookId} /> : null}
           {route.name === 'settings' ? <SettingsView /> : null}
           {route.name === 'stats' ? <StatsView /> : null}
-          {route.name === 'assistant' ? <AssistantView /> : null}
-          {route.name === 'traversal' ? <TraversalView /> : null}
+          {route.name === 'smart' ? <SmartView initialBookId={route.bookId} /> : null}
+          {route.name === 'assistant' ? <AssistantView initialBookId={route.bookId} /> : null}
+          {route.name === 'traversal' ? <TraversalView initialBookId={route.bookId} /> : null}
           {route.name === 'branch' ? <BranchView branchId={route.branchId} /> : null}
-          {route.name === 'mp' ? <MPView /> : null}
+          {route.name === 'mp' ? <MPView initialBookId={route.bookId} /> : null}
         </div>
         {navOpen ? <div className="nav-backdrop" onClick={() => setNavOpen(false)} /> : null}
       </div>
@@ -285,6 +296,81 @@ async function handleHotkey(name: string) {
     default:
       break;
   }
+}
+
+async function handleMenu(action: string) {
+  if (action.startsWith('carrier:')) {
+    const id = action.slice('carrier:'.length);
+    if (isShelfMotif(id)) {
+      setShelfMotif(id);
+      toast(`界面材质：${shelfMotifLabel(id)}`);
+    }
+    return;
+  }
+  if (action === 'mode:page' || action === 'mode:scroll') {
+    const current = store.get().settings;
+    if (!current) return;
+    const pageMode: 'page' | 'scroll' = action === 'mode:scroll' ? 'scroll' : 'page';
+    const theme =
+      pageMode === 'scroll' && current.theme.columns === 2
+        ? { ...current.theme, columns: 1 }
+        : current.theme;
+    const next = { ...current, theme, reader: { ...current.reader, pageMode } };
+    store.set({ settings: next });
+    void api
+      .saveSettings(next)
+      .then((saved) => store.set({ settings: saved }))
+      .catch((e: unknown) => toast(String((e as Error).message || e), 'error'));
+    return;
+  }
+  switch (action) {
+    case 'shelf':
+      navigate({ name: 'shelf' });
+      break;
+    case 'search':
+      navigate({ name: 'search' });
+      break;
+    case 'stats':
+      navigate({ name: 'stats' });
+      break;
+    case 'assistant':
+      navigate({ name: 'assistant' });
+      break;
+    case 'traversal':
+      navigate({ name: 'traversal' });
+      break;
+    case 'settings':
+      navigate({ name: 'settings' });
+      break;
+    case 'sync':
+      syncShelfFromMenu();
+      break;
+    case 'zen':
+      await handleHotkey('zen');
+      break;
+    case 'typing':
+      await handleHotkey('typing');
+      break;
+    case 'toggleTop':
+      await handleHotkey('toggleTop');
+      break;
+    default:
+      break;
+  }
+}
+
+function syncShelfFromMenu() {
+  store.set({ shelfState: 'loading' });
+  api
+    .syncShelf()
+    .then((books) => {
+      store.set({ books, shelfState: 'idle', online: true });
+      toast(`已同步 ${books.length} 本`, 'success');
+    })
+    .catch((e: unknown) => {
+      store.set({ shelfState: 'error', online: false });
+      toast(String((e as Error).message || e), 'error');
+    });
 }
 
 // Keep the settings type referenced for the store patch above.

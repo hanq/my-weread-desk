@@ -1,12 +1,24 @@
 // Wire types mirroring the Go binding payloads. Keep field names identical to
 // the JSON tags on the Go side.
 
+export type BookKind =
+  | 'fiction'
+  | 'nonfiction'
+  | 'textbook'
+  | 'periodical'
+  | 'medical'
+  | 'imaging'
+  | 'other';
+
 export interface Book {
   id: string;
   title: string;
   author: string;
   cover: string;
   category: string;
+  /** AI classification filled by the app layer; not part of the WeRead payload. */
+  kind?: BookKind;
+  kindSource?: 'auto' | 'user' | string;
   intro: string;
   rating: number;
   ratingCount: number;
@@ -174,6 +186,10 @@ export interface Theme {
   marginY: number;
   lineNumbers: boolean;
   columns: number;
+  /** Chinese paper pattern id; empty means no pattern. */
+  pattern?: string;
+  /** Pattern strength, 0.04 - 0.32. */
+  patternOpacity?: number;
   headingColor: string;
   accentColor: string;
   selectionColor: string;
@@ -366,6 +382,41 @@ export interface RAGStatus {
   chunkCount: number;
   charCount: number;
   error: string;
+  updatedAt: number;
+}
+
+export interface AIStage {
+  status: 'none' | 'running' | 'partial' | 'ready' | 'failed' | 'stale' | string;
+  detail?: string;
+  count?: number;
+  updatedAt?: number;
+}
+
+export interface AICapabilities {
+  ask: boolean;
+  immerse: boolean;
+  rewrite: boolean;
+}
+
+export interface AIStatus {
+  bookId: string;
+  kind: BookKind;
+  kindSource: string;
+  text: AIStage;
+  scenes: AIStage;
+  world: AIStage;
+  capabilities: AICapabilities;
+}
+
+export interface SmartBook {
+  book: Book;
+  kind: BookKind;
+  kindSource: string;
+  text: AIStage;
+  scenes: AIStage;
+  world: AIStage;
+  capabilities: AICapabilities;
+  branchCount: number;
   updatedAt: number;
 }
 

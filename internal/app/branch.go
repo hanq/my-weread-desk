@@ -27,6 +27,18 @@ func (a *App) StartBranch(bookID string, forkSeq int, intent string) (*story.Bra
 	if bookID == "" {
 		return nil, errors.New("缺少书籍 ID")
 	}
+	if err := a.requireFiction(bookID); err != nil {
+		return nil, err
+	}
+	if err := a.requireTextIndex(bookID); err != nil {
+		return nil, err
+	}
+	if err := a.requireScenes(bookID); err != nil {
+		return nil, err
+	}
+	if err := a.requireWorld(bookID); err != nil {
+		return nil, err
+	}
 
 	scenes, err := a.store.StoryScenes(bookID)
 	if err != nil {
@@ -141,6 +153,18 @@ func (a *App) ContinueBranch(branchID, intent string) (*story.BranchScene, error
 	}
 	if b.Status != story.BranchActive {
 		return nil, errors.New("这条世界线已经收束")
+	}
+	if err := a.requireFiction(b.BookID); err != nil {
+		return nil, err
+	}
+	if err := a.requireTextIndex(b.BookID); err != nil {
+		return nil, err
+	}
+	if err := a.requireScenes(b.BookID); err != nil {
+		return nil, err
+	}
+	if err := a.requireWorld(b.BookID); err != nil {
+		return nil, err
 	}
 
 	mem, err := story.ParseMemory(b.MemoryMD)
@@ -435,6 +459,15 @@ func (a *App) ImportBranch(bookID, payload string) (*story.Branch, error) {
 	bookID = strings.TrimSpace(bookID)
 	if bookID == "" {
 		return nil, errors.New("缺少书籍 ID")
+	}
+	if err := a.requireFiction(bookID); err != nil {
+		return nil, err
+	}
+	if err := a.requireTextIndex(bookID); err != nil {
+		return nil, err
+	}
+	if err := a.requireScenes(bookID); err != nil {
+		return nil, err
 	}
 	pkg, err := story.ParseBranchPackage(payload)
 	if err != nil {

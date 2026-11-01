@@ -5,10 +5,15 @@ import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles/base.css';
 import './styles/app.css';
+import './styles/titleOrb.css';
 import './styles/reader.css';
 import './styles/skins.css';
 import './styles/chat.css';
 import './styles/responsive.css';
+import './styles/shelf.css';
+import './styles/smart.css';
+import './styles/carrier.css';
+import './styles/patterns.css';
 
 async function bootstrap() {
   if (import.meta.env.DEV && !(window as unknown as { go?: unknown }).go) {
