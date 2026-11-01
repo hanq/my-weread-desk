@@ -5,14 +5,27 @@ import (
 	"embed"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"my-weread-desk/internal/config"
 )
 
-//go:embed icons/*.ico
+// The disguise icons ship as Windows .ico files and macOS-friendly .png files.
+// Win32 loads icons from a path with LoadImage, while AppKit builds an NSImage
+// from the file, and NSImage cannot decode .ico.
+//
+//go:embed icons/*
 var disguiseIcons embed.FS
+
+// disguiseIconExt picks the icon container the current platform can decode.
+func disguiseIconExt() string {
+	if goruntime.GOOS == "darwin" {
+		return ".png"
+	}
+	return ".ico"
+}
 
 var skinTitles = map[string]string{
 	"none":     "my-weread-desk",
@@ -72,9 +85,9 @@ func (a *App) syncWindowTitle() {
 	}
 }
 
-// applyDisguise syncs the native taskbar and Alt-Tab icon with the active skin.
-// The icon is embedded in the binary and materialised under the data directory
-// because the Win32 LoadImage API needs a file path.
+// applyDisguise syncs the native taskbar / dock and Alt-Tab / app-switcher icon
+// with the active skin. The icon is embedded in the binary and materialised
+// under the data directory because the native APIs load icons from a file path.
 func (a *App) applyDisguise() {
 	s := a.settings.Get()
 	name := "app"
@@ -83,7 +96,8 @@ func (a *App) applyDisguise() {
 			name = mapped
 		}
 	}
-	data, err := disguiseIcons.ReadFile("icons/" + name + ".ico")
+	ext := disguiseIconExt()
+	data, err := disguiseIcons.ReadFile("icons/" + name + ext)
 	if err != nil {
 		return
 	}
@@ -91,7 +105,7 @@ func (a *App) applyDisguise() {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
-	path := filepath.Join(dir, name+".ico")
+	path := filepath.Join(dir, name+ext)
 	if current, err := os.ReadFile(path); err != nil || !bytes.Equal(current, data) {
 		if err := os.WriteFile(path, data, 0o644); err != nil {
 			return

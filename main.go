@@ -12,6 +12,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 
 	"my-weread-desk/internal/app"
@@ -58,6 +59,17 @@ func main() {
 			WebviewUserDataPath:               webviewDataPath(),
 			ZoomFactor:                        1.0,
 		},
+		// The rounded chrome is painted by CSS. The NSWindow backing is already
+		// made transparent by syncWindowBackground; the WKWebView still paints its
+		// own opaque background unless this flag is set, which hides three corners.
+		Mac: &mac.Options{
+			WebviewIsTransparent: true,
+			About: &mac.AboutInfo{
+				Title:   "MY WEREAD",
+				Message: "第三方微信读书桌面客户端\n阅读 · 书架 · 统计",
+			},
+		},
+		Menu: buildAppMenu(application),
 		Bind: []interface{}{application},
 	}
 

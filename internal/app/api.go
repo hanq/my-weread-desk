@@ -150,6 +150,33 @@ func (a *App) SetWindowBackground() {
 	a.syncWindowBackground()
 }
 
+// MenuAction forwards a native menu command to the React shell. Window and
+// file actions call App methods directly; route/theme actions go through the
+// store so the single-page shell remains the source of truth.
+func (a *App) MenuAction(action string) {
+	if a.ctx == nil {
+		return
+	}
+	runtime.EventsEmit(a.ctx, "menu", action)
+}
+
+// ShowShortcuts opens a native cheat sheet for the configured hotkeys.
+func (a *App) ShowShortcuts() {
+	if a.ctx == nil {
+		return
+	}
+	h := a.settings.Get().Hotkeys
+	message := fmt.Sprintf(
+		"禅模式        %s\n打字模式      %s\n窗口置顶      %s\n老板键        %s\n切换皮肤      %s\n鼠标穿透      %s",
+		h["zen"], h["typing"], h["toggleTop"], h["panic"], h["cycleSkin"], h["clickThrough"],
+	)
+	_, _ = runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:    runtime.InfoDialog,
+		Title:   "MY WEREAD 快捷键",
+		Message: message,
+	})
+}
+
 // SetWindowRadius clears any legacy native region immediately. The visual
 // radius is painted in CSS (--window-radius), so the slider repaints as soon as
 // the settings store changes; this call only removes a region left by an older

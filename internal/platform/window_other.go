@@ -16,8 +16,9 @@ func (m *Manager) SetOpacity(float64) error { return nil }
 // SetClickThrough is a no-op.
 func (m *Manager) SetClickThrough(bool) error { return nil }
 
-// SetWindowIcon is a no-op.
-func (m *Manager) SetWindowIcon(string) error { return nil }
+// SetWindowIcon swaps the dock or taskbar icon using the platform helper;
+// platforms without an icon API fall back to a no-op.
+func (m *Manager) SetWindowIcon(path string) error { return setWindowIcon(path) }
 
 // SetTaskbarHidden is a no-op.
 func (m *Manager) SetTaskbarHidden(bool) error { return nil }
