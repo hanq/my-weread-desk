@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>AI 书房 · 改写世界线</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="window">
+    <header class="titlebar">
+      <div class="brand"><span class="dot"></span><span>my-weread-desk</span></div>
+      <div class="spacer"></div>
+      <div class="win-actions">
+        <button title="最小化"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <button title="最大化"><svg class="ico" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>
+        <button title="关闭"><svg class="ico" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+    </header>
+
+    <div class="shell">
+      <nav class="sidebar">
+        <div class="group-label">阅读</div>
+        <button class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z"/><path d="M8 3v18"/></svg>
+          <span class="grow">书架</span><span class="count">42</span>
+        </button>
+        <button class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <span class="grow">搜索</span>
+        </button>
+        <button class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+          <span class="grow">统计</span>
+        </button>
+        <div class="group-label">智能</div>
+        <button class="nav-item on">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/></svg>
+          <span class="grow">AI 书房</span>
+        </button>
+        <div class="sidebar-foot">
+          <button class="nav-item">
+            <svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>
+            <span class="grow">设置</span>
+          </button>
+          <button class="nav-item">
+            <svg class="ico" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.5-6.2M21 12a9 9 0 0 1-15.5 6.2"/><path d="M18 3v5h-5M6 21v-5h5"/></svg>
+            <span class="grow">同步书架</span>
+          </button>
+          <div class="account">
+            <div class="avatar">我</div>
+            <div class="grow">
+              <div class="name">hanq</div>
+              <div class="sub">已开通 Skill</div>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <main class="main worldline-main">
+        <div class="wl-bar">
+          <button class="back" style="color: var(--dim); display: inline-flex; align-items: center; gap: 6px; font-size: 12px">
+            <svg class="ico sm" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg>
+            AI 书房
+          </button>
+          <div class="wl-title">
+            <div class="t">世界线 · 第 12 幕分叉</div>
+            <div class="s">如果林黛玉没有进贾府</div>
+          </div>
+          <span class="chip ai">进行中</span>
+          <span class="chip">第 3 / 5 幕</span>
+          <div class="grow"></div>
+          <span class="muted" style="font-size: 10.5px">已自动保存</span>
+          <button class="btn ghost">回到原著</button>
+          <button class="btn ghost">
+            <svg class="ico sm" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+            导出
+          </button>
+        </div>
+
+        <div class="wl-body">
+          <aside class="wl-timeline">
+            <h3>世界线</h3>
+            <ol class="tl-list">
+              <li class="tl-node">
+                <div class="no">第 11 幕</div>
+                <div class="name">贾母接黛玉</div>
+                <span class="tag">原著</span>
+              </li>
+              <li class="tl-node fork">
+                <div class="no">第 12 幕</div>
+                <div class="name">黛玉留在扬州</div>
+                <span class="tag">分叉点</span>
+              </li>
+              <li class="tl-node">
+                <div class="no">第 13 幕</div>
+                <div class="name">宝玉独自来访</div>
+                <span class="tag">已生成</span>
+              </li>
+              <li class="tl-node current">
+                <div class="no">第 14 幕</div>
+                <div class="name">雨夜里的选择</div>
+                <span class="tag">当前</span>
+                <button class="rewind" style="opacity: 1">↺ 回溯</button>
+              </li>
+              <li class="tl-node future">
+                <div class="no">第 15 幕</div>
+                <div class="name">等待你的选择</div>
+              </li>
+              <li class="tl-node future">
+                <div class="no">第 16 幕</div>
+                <div class="name">收束 · 回到原著</div>
+              </li>
+            </ol>
+            <button class="btn ghost" style="width: 100%; margin-top: 8px">↺ 从这一幕重开</button>
+          </aside>
+
+          <section class="wl-canvas">
+            <div class="canon-card">
+              <div class="head">
+                <svg class="ico sm" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z"/><path d="M8 3v18"/></svg>
+                原著这里发生了什么
+                <span class="grow"></span>
+                <button class="link">查看原文</button>
+              </div>
+              <div class="text">
+                原著第 13 幕：宝玉在雨夜去潇湘馆看黛玉，两人因“金玉”之说生出试探与口角，最后不欢而散。
+              </div>
+            </div>
+
+            <article class="scene-card">
+              <div class="scene-head">
+                <span>第 14 幕 · 雨夜里的选择</span>
+                <span class="chip ai">AI 生成</span>
+                <span class="chip ok">已落实选择</span>
+                <span class="grow"></span>
+                <span>对应原著第 13 幕</span>
+              </div>
+              <div class="scene-text">
+                <p>
+                  雨下得比前几日都密。宝玉站在廊下，衣角已经湿了一片，却没有让人通报。
+                  他听见屋里有人咳嗽，声音很轻，像是刻意压住的。
+                </p>
+                <p>
+                  <span class="diff">他没有像原著那样推门而入。</span>
+                  他在门外站了很久，直到丫鬟提着灯过来，才低声问了一句：“她今日可好？”
+                </p>
+                <p>
+                  屋里安静了一瞬。黛玉的声音隔着门传出来，听不出情绪：
+                  “好与不好，原也不劳你费心。”
+                </p>
+              </div>
+              <div class="committed">
+                <svg class="ico sm" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></svg>
+                本幕已落实：你选择让宝玉独自前来，没有带丫鬟，也没有惊动贾母。
+              </div>
+            </article>
+
+            <div class="choice-panel">
+              <div class="head">
+                <h3>接下来</h3>
+                <span class="muted">选择后会被强制落实，不会回到原著</span>
+              </div>
+              <div class="choice-grid">
+                <button class="wl-choice">
+                  <span class="t">让宝玉留下过夜</span>
+                  <span class="h">关系升温 · 可能触发第 16 幕锚点</span>
+                </button>
+                <button class="wl-choice warn">
+                  <span class="t">当众说出真相</span>
+                  <span class="h">与「身份揭示」锚点冲突 · 可能收束</span>
+                </button>
+                <button class="wl-choice">
+                  <span class="t">让黛玉闭门不见</span>
+                  <span class="h">关系降温 · 保留悬念</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <aside class="wl-rail">
+            <section class="rail-card">
+              <h3>世界状态</h3>
+              <div class="stat"><span class="k">银钱</span><span class="bar"><span style="width: 42%"></span></span><span class="v">42</span></div>
+              <div class="stat"><span class="k">声望</span><span class="bar"><span style="width: 18%"></span></span><span class="v">18</span></div>
+              <div class="stat"><span class="k">体力</span><span class="bar"><span style="width: 63%"></span></span><span class="v">63</span></div>
+              <div style="display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap">
+                <span class="chip">通灵宝玉 ×1</span>
+                <span class="chip">诗稿 ×2</span>
+              </div>
+            </section>
+
+            <section class="rail-card anchor-card">
+              <h3>剧情锚点</h3>
+              <div class="anchor-line"><span class="dot"></span>身份揭示 · 还有 2 幕</div>
+              <p>世界会尝试把结果拉回这个锚点，但允许你走不同的路径。硬冲突会在选择前提示。</p>
+            </section>
+
+            <section class="rail-card">
+              <h3>剧情提示</h3>
+              <ul class="hint-list">
+                <li><span class="mark"></span>你已改变：宝玉没有按原著那样推门而入。</li>
+                <li><span class="mark"></span>未解决：宝玉仍不知道黛玉为何留在扬州。</li>
+                <li><span class="mark"></span>下一幕可能：贾母察觉宝玉频繁外出。</li>
+              </ul>
+            </section>
+          </aside>
+        </div>
+
+        <div class="wl-composer">
+          <input placeholder="或者，直接说出你想发生什么…（可留空，只选上方选项）" />
+          <button class="btn primary">发送</button>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

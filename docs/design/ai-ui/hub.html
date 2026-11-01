@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>AI 书房 · 总览</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="window">
+    <header class="titlebar">
+      <div class="brand"><span class="dot"></span><span>my-weread-desk</span></div>
+      <div class="spacer"></div>
+      <div class="win-actions">
+        <button title="最小化"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <button title="最大化"><svg class="ico" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>
+        <button title="关闭"><svg class="ico" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+    </header>
+
+    <div class="shell">
+      <nav class="sidebar">
+        <div class="group-label">阅读</div>
+        <button class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z"/><path d="M8 3v18"/></svg>
+          <span class="grow">书架</span><span class="count">42</span>
+        </button>
+        <button class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <span class="grow">搜索</span>
+        </button>
+        <button class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+          <span class="grow">统计</span>
+        </button>
+
+        <div class="group-label">智能</div>
+        <button class="nav-item on">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/></svg>
+          <span class="grow">AI 书房</span>
+        </button>
+
+        <div class="sidebar-foot">
+          <button class="nav-item">
+            <svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>
+            <span class="grow">设置</span>
+          </button>
+          <button class="nav-item">
+            <svg class="ico" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.5-6.2M21 12a9 9 0 0 1-15.5 6.2"/><path d="M18 3v5h-5M6 21v-5h5"/></svg>
+            <span class="grow">同步书架</span>
+          </button>
+          <div class="account">
+            <div class="avatar">我</div>
+            <div class="grow">
+              <div class="name">hanq</div>
+              <div class="sub">已开通 Skill</div>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <main class="main">
+        <div class="page-head">
+          <div>
+            <h1>AI 书房</h1>
+            <p class="sub">先准备这本书，再选择怎么读它。</p>
+          </div>
+          <div class="grow"></div>
+          <button class="book-picker">
+            《红楼梦》
+            <span class="muted">· 42 章</span>
+            <svg class="ico sm" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <button class="icon-btn" title="AI 设置">
+            <svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>
+          </button>
+        </div>
+
+        <div class="book-strip">
+          <div class="cover">红楼梦</div>
+          <div class="book-meta">
+            <div class="book-title">红楼梦</div>
+            <div class="book-sub">曹雪芹 · 小说 · 73.4 万字 · 已缓存 42/42 章</div>
+          </div>
+          <span class="chip ok">虚构叙事</span>
+          <span class="chip ai">文本索引已就绪</span>
+          <span class="push"></span>
+          <button class="btn ghost">更换书籍</button>
+        </div>
+
+        <div class="hub-grid">
+          <section class="prep-card">
+            <div class="kicker">本书准备</div>
+            <h2>建立索引后，AI 才能引用原文</h2>
+            <p class="lead">
+              索引只读取本机已缓存的章节，不会重新下载。剧情索引需要把章节发给模型分析，
+              你可以随时暂停。
+            </p>
+
+            <ol class="prep-steps">
+              <li class="prep-step done">
+                <span class="step-dot">✓</span>
+                <div class="step-body">
+                  <div class="step-title">
+                    文本索引
+                    <span class="chip ok">完成</span>
+                  </div>
+                  <div class="step-note">286 段 · 12.4 万字 · 可回答原文细节</div>
+                </div>
+              </li>
+              <li class="prep-step active">
+                <span class="step-dot">2</span>
+                <div class="step-body">
+                  <div class="step-title">
+                    剧情索引
+                    <span class="chip ai">进行中</span>
+                  </div>
+                  <div class="step-note">正在分析人物、地点与场景 · 18/42 章 · 约 2 分钟</div>
+                  <div class="progress"><span></span></div>
+                </div>
+              </li>
+              <li class="prep-step todo">
+                <span class="step-dot">3</span>
+                <div class="step-body">
+                  <div class="step-title">
+                    世界设定
+                    <span class="chip lock">未建立</span>
+                  </div>
+                  <div class="step-note">改写世界前，需要确认锚点与世界状态</div>
+                </div>
+              </li>
+            </ol>
+
+            <div class="prep-actions">
+              <button class="btn primary">继续准备</button>
+              <button class="btn ghost">暂停</button>
+              <span class="hint">已完成章节会保留</span>
+            </div>
+          </section>
+
+          <section class="modes">
+            <div class="section-head">
+              <h2>选择一种方式</h2>
+              <span class="muted">所有回答只使用本书内容</span>
+            </div>
+
+            <div class="mode-grid">
+              <article class="mode-card">
+                <div class="mode-icon">
+                  <svg class="ico lg" viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/></svg>
+                </div>
+                <h3>问答</h3>
+                <p>问这本书记了什么，或者让助手定位某个情节。</p>
+                <span class="chip ok">可用</span>
+                <button class="btn">开始提问</button>
+              </article>
+
+              <article class="mode-card">
+                <div class="mode-icon">
+                  <svg class="ico lg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                </div>
+                <h3>沉浸穿越</h3>
+                <p>进入某一幕，以主角的视角经历剧情。不改变原著。</p>
+                <span class="chip ok">可用</span>
+                <button class="btn primary">进入第 12 幕</button>
+              </article>
+
+              <article class="mode-card locked">
+                <div class="mode-icon">
+                  <svg class="ico lg" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7.4 11 15M16 7.4 13 15M8.5 6h7"/></svg>
+                </div>
+                <h3>改写世界</h3>
+                <p>做出选择，生成另一条世界线。选择会被强制落实。</p>
+                <span class="chip warn">需完成世界设定</span>
+                <button class="btn" disabled>还不能开始</button>
+              </article>
+            </div>
+
+            <div class="recent">
+              <div class="section-head">
+                <h3>最近的世界线</h3>
+                <a class="link">全部</a>
+              </div>
+              <button class="recent-item">
+                <span class="recent-fork">第 12 幕分叉</span>
+                <span class="grow">如果林黛玉没有进贾府</span>
+                <span class="time">3 幕 · 2 小时前</span>
+                <svg class="ico sm" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+              </button>
+              <button class="recent-item">
+                <span class="recent-fork">第 5 幕分叉</span>
+                <span class="grow">宝玉没有摔玉</span>
+                <span class="time">5 幕 · 昨天</span>
+                <svg class="ico sm" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <div class="hub-note">
+          <svg class="ico sm" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          故事穿越只对虚构叙事开放。教材、期刊、医学书会显示各自的学习工具。
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

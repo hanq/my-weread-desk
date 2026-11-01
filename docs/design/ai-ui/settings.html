@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>设置 · AI 服务</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="window">
+    <header class="titlebar">
+      <div class="brand"><span class="dot"></span><span>my-weread-desk</span></div>
+      <div class="spacer"></div>
+      <div class="win-actions">
+        <button title="最小化"><svg class="ico" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <button title="最大化"><svg class="ico" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>
+        <button title="关闭"><svg class="ico" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+    </header>
+
+    <div class="shell">
+      <nav class="sidebar">
+        <div class="group-label">阅读</div>
+        <button class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z"/><path d="M8 3v18"/></svg>
+          <span class="grow">书架</span><span class="count">42</span>
+        </button>
+        <button class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <span class="grow">搜索</span>
+        </button>
+        <button class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+          <span class="grow">统计</span>
+        </button>
+        <div class="group-label">智能</div>
+        <button class="nav-item">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/></svg>
+          <span class="grow">AI 书房</span>
+        </button>
+        <div class="sidebar-foot">
+          <button class="nav-item on">
+            <svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>
+            <span class="grow">设置</span>
+          </button>
+          <button class="nav-item">
+            <svg class="ico" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15.5-6.2M21 12a9 9 0 0 1-15.5 6.2"/><path d="M18 3v5h-5M6 21v-5h5"/></svg>
+            <span class="grow">同步书架</span>
+          </button>
+          <div class="account">
+            <div class="avatar">我</div>
+            <div class="grow">
+              <div class="name">hanq</div>
+              <div class="sub">已开通 Skill</div>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <main class="main settings-main">
+        <div class="page-head">
+          <div>
+            <h1>设置</h1>
+            <p class="sub">AI 服务 · 供应商、模型与系统提示词</p>
+          </div>
+          <div class="grow"></div>
+          <span class="save-note">设置会自动保存</span>
+          <button class="btn ghost">恢复默认</button>
+        </div>
+
+        <div class="settings-body">
+          <nav class="settings-nav">
+            <button>通用</button>
+            <button>阅读</button>
+            <button>窗口</button>
+            <button>伪装</button>
+            <button class="on">AI 服务</button>
+            <button>快捷键</button>
+            <button>关于</button>
+          </nav>
+
+          <div class="settings-content">
+            <section class="card">
+              <h2>AI 服务</h2>
+              <p class="desc">一份配置供问答、穿越、世界线与教材工具共用。兼容 OpenAI 协议。</p>
+              <div class="preset-row">
+                <button class="preset on">DeepSeek</button>
+                <button class="preset">OpenAI</button>
+                <button class="preset">Moonshot</button>
+                <button class="preset">硅基流动</button>
+                <button class="preset">Ollama</button>
+                <button class="preset">LM Studio</button>
+              </div>
+              <div class="form-grid">
+                <div class="field">
+                  <label>服务地址</label>
+                  <input value="https://api.deepseek.com" />
+                </div>
+                <div class="field">
+                  <label>API Key</label>
+                  <input value="••••••••••••••••••••" type="password" />
+                </div>
+                <div class="field">
+                  <label>默认模型（正文生成 / 问答）</label>
+                  <input value="deepseek-chat" />
+                </div>
+                <div class="field">
+                  <label>快速模型（选项 / 校验 / 摘要）</label>
+                  <input value="deepseek-chat" />
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px">
+                <span class="conn-status">
+                  <svg class="ico sm" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></svg>
+                  已连接 · deepseek-chat · 420ms
+                </span>
+                <span class="spacer" style="flex: 1"></span>
+                <button class="btn">测试连接</button>
+              </div>
+            </section>
+
+            <section class="card">
+              <h2>生成与检索</h2>
+              <p class="desc">影响所有 AI 功能。默认值适合大多数情况。</p>
+              <div class="param-grid">
+                <div class="param"><div class="k">检索段落</div><div class="v">8 块</div></div>
+                <div class="param"><div class="k">上下文扩展</div><div class="v">前后各 1 块</div></div>
+                <div class="param"><div class="k">温度</div><div class="v">0.3</div></div>
+                <div class="param"><div class="k">最大输出</div><div class="v">1200 tokens</div></div>
+              </div>
+              <div style="display: flex; gap: 22px; margin-top: 10px; font-size: 11px; color: var(--dim)">
+                <label style="display: flex; align-items: center; gap: 7px">流式输出 <span class="toggle on"></span></label>
+                <label style="display: flex; align-items: center; gap: 7px">失败自动重试 <span class="toggle on"></span></label>
+                <label style="display: flex; align-items: center; gap: 7px">JSON 模式优先 <span class="toggle"></span></label>
+              </div>
+            </section>
+
+            <section class="card">
+              <h2>系统提示词</h2>
+              <p class="desc">默认随应用更新；自定义只影响新生成。必填变量缺失时无法保存。</p>
+              <div class="prompt-row">
+                <span class="name">问答</span>
+                <span class="key">qa.answer · v3</span>
+                <span class="state">使用默认</span>
+                <span class="toggle on"></span>
+              </div>
+              <div class="prompt-row">
+                <span class="name">场景抽取</span>
+                <span class="key">story.scene_extract · v2</span>
+                <span class="state">使用默认</span>
+                <span class="toggle on"></span>
+              </div>
+              <div class="prompt-row">
+                <span class="name">沉浸叙述</span>
+                <span class="key">immersion.narrator · v1</span>
+                <span class="chip warn">已自定义</span>
+                <span class="link">恢复默认</span>
+              </div>
+              <div style="margin-top: 6px"><button class="link">展开更多提示词（10）</button></div>
+            </section>
+
+            <div class="two-col">
+              <section class="card">
+                <h2>数据与安全</h2>
+                <div style="display: flex; flex-direction: column; gap: 9px; font-size: 11px; color: var(--dim)">
+                  <label style="display: flex; align-items: center; gap: 8px">
+                    允许把检索到的正文片段发送给 AI 服务
+                    <span class="spacer" style="flex: 1"></span><span class="toggle on"></span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px">
+                    允许导入他人分享的世界线包
+                    <span class="spacer" style="flex: 1"></span><span class="toggle on"></span>
+                  </label>
+                </div>
+                <p class="desc" style="margin: 8px 0 0">
+                  日志会隐藏正文与 Key；API Key 只保存在本机。
+                </p>
+              </section>
+
+              <section class="card">
+                <h2>本月用量</h2>
+                <div class="usage">
+                  <span>1,284 次调用</span>
+                  <span class="bar"><span></span></span>
+                  <span>34%</span>
+                </div>
+                <p class="desc" style="margin: 8px 0 10px">
+                  约 186k tokens · 预算 ¥5.00 / 月。超出预算后会暂停 AI 生成，只保留问答。
+                </p>
+                <button class="link">查看明细</button>
+              </section>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>
