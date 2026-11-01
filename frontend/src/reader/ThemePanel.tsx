@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 
 import { api } from '../api';
 import type { Theme } from '../types';
+import { PatternGrid } from './PatternGrid';
+import { DEFAULT_PATTERN_OPACITY } from './patterns';
 
 interface Props {
   theme: Theme;
@@ -50,7 +52,7 @@ export function ThemePanel({ theme, presets, onChange, onPreset, onClose }: Prop
             key={p.name}
             className={`sw${p.name === theme.name ? ' on' : ''}`}
             style={{ background: p.background === 'transparent' ? '#20242e' : p.background, color: p.textColor }}
-            onClick={() => onPreset(p)}
+            onClick={() => onPreset({ ...p, pattern: theme.pattern, patternOpacity: theme.patternOpacity })}
             title={p.name}
           >
             {p.name}
@@ -162,6 +164,29 @@ export function ThemePanel({ theme, presets, onChange, onPreset, onClose }: Prop
         </button>
       </Row>
 
+      <h4>底纹</h4>
+      <PatternGrid
+        value={theme.pattern ?? ''}
+        onChange={(pattern) => onChange({ pattern })}
+        paper={theme.surface}
+        ink={theme.textColor}
+      />
+      {theme.pattern ? (
+        <Row
+          label="浓度"
+          value={`${Math.round((theme.patternOpacity ?? DEFAULT_PATTERN_OPACITY) * 100)}%`}
+        >
+          <input
+            type="range"
+            min={4}
+            max={32}
+            step={1}
+            value={Math.round((theme.patternOpacity ?? DEFAULT_PATTERN_OPACITY) * 100)}
+            onChange={(e) => onChange({ patternOpacity: Number(e.target.value) / 100 })}
+          />
+        </Row>
+      ) : null}
+
       <h4>版式</h4>
       <Row label="对齐">
         <select
@@ -194,7 +219,13 @@ export function ThemePanel({ theme, presets, onChange, onPreset, onClose }: Prop
           ).map(([n, label]) => (
             <button
               key={n}
-              title={n === 0 ? '窗口足够宽时自动分为两栏' : undefined}
+              title={
+                n === 0
+                  ? '窗口足够宽时自动分为两栏'
+                  : n === 2
+                    ? '双栏会切换到左右翻页，像摊开的书页'
+                    : undefined
+              }
               className={theme.columns === n ? 'on' : ''}
               onClick={() => onChange({ columns: n })}
             >

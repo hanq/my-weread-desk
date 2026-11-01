@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 
 import type { Theme } from '../types';
+import { DEFAULT_PATTERN_OPACITY, readerPattern } from './patterns';
 
 export function fontStack(theme: Theme): string {
   const families = [theme.fontFamily, theme.fallbackFonts]
@@ -34,6 +35,8 @@ export interface ThemeVarOptions {
 export function themeVars(theme: Theme, opts: ThemeVarOptions): CSSProperties {
   const surface = theme.surface || 'transparent';
   const isTransparent = theme.background === 'transparent' || theme.surface === 'transparent';
+  const pattern = readerPattern(theme.pattern);
+  const patternOpacity = Math.min(0.4, Math.max(0, theme.patternOpacity ?? DEFAULT_PATTERN_OPACITY));
   return {
     '--r-bg': theme.background || 'transparent',
     '--r-surface': opts.paper === 'transparent' ? 'transparent' : surface,
@@ -59,6 +62,9 @@ export function themeVars(theme: Theme, opts: ThemeVarOptions): CSSProperties {
     '--r-paper-pad': `${Math.round(opts.pad ?? 0)}px`,
     '--r-paper-shadow': isTransparent ? 'none' : 'var(--shadow-paper)',
     '--r-paper-radius': isTransparent ? '0px' : '6px',
+    '--r-pattern-mask': pattern?.mask ?? 'none',
+    '--r-pattern-size': pattern?.size ?? 'auto',
+    '--r-pattern-opacity': String(patternOpacity),
   } as CSSProperties;
 }
 

@@ -29,8 +29,28 @@ func TestMergeDefaultsMigratesWindowRadius(t *testing.T) {
 	in.Version = 1
 	in.Window.Radius = 0
 	got := mergeDefaults(in)
-	if got.Window.Radius != 12 {
+	if got.Window.Radius != defaultWindowRadius() {
 		t.Fatalf("window radius not migrated: %d", got.Window.Radius)
+	}
+}
+
+func TestMergeDefaultsLiftsLegacyWindowRadius(t *testing.T) {
+	in := Defaults()
+	in.Version = 4
+	in.Window.Radius = legacyWindowRadius
+	got := mergeDefaults(in)
+	if got.Window.Radius != defaultWindowRadius() {
+		t.Fatalf("legacy radius %d not lifted to %d", legacyWindowRadius, defaultWindowRadius())
+	}
+}
+
+func TestMergeDefaultsKeepsCustomWindowRadius(t *testing.T) {
+	in := Defaults()
+	in.Version = 4
+	in.Window.Radius = 7
+	got := mergeDefaults(in)
+	if got.Window.Radius != 7 {
+		t.Fatalf("custom radius overwritten: %d", got.Window.Radius)
 	}
 }
 
@@ -64,7 +84,7 @@ func TestMergeDefaultsSeedsPageMode(t *testing.T) {
 	in.Reader.ShowScrollbar = false
 	in.Reader.SmoothScroll = false
 	got := mergeDefaults(in)
-	if got.Version != 4 {
+	if got.Version != 5 {
 		t.Fatalf("version = %d", got.Version)
 	}
 	if got.Reader.PageMode != "page" || got.Reader.PageTurnEffect != "slide" {

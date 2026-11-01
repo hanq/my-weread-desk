@@ -1,0 +1,130 @@
+/* Reader paper patterns and the shared pattern picker. The pattern is painted
+ * with the theme ink through a CSS mask, so it follows light, sepia and dark
+ * themes without shipping a second set of coloured images. */
+
+.paper-pattern {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--r-ink);
+  opacity: var(--r-pattern-opacity, 0.14);
+  -webkit-mask-image: var(--r-pattern-mask, none);
+  mask-image: var(--r-pattern-mask, none);
+  -webkit-mask-size: var(--r-pattern-size, auto);
+  mask-size: var(--r-pattern-size, auto);
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  transition: opacity 0.18s ease;
+}
+
+/* The paper is the stack context; keep the text above the pattern. */
+.paper > .viewport {
+  z-index: 1;
+}
+
+/* Disguise skins and zen mode keep their own surfaces. */
+.paper.no-surface .paper-pattern,
+.reader.zen .paper-pattern {
+  display: none;
+}
+
+/* ------------------------------------------------------------- picker */
+
+.pattern-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 7px;
+}
+
+.pattern-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 5px;
+  border-radius: 8px;
+  border: 1px solid var(--pattern-line, var(--chrome-line));
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--pattern-muted, var(--ink-faint));
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.pattern-option:hover {
+  border-color: var(--pattern-line-strong, var(--chrome-line-strong));
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--pattern-text, var(--ink));
+  transform: translateY(-1px);
+}
+.pattern-option.on {
+  border-color: var(--pattern-active, var(--accent));
+  background: var(--pattern-active-soft, var(--accent-soft));
+  color: var(--pattern-text, var(--ink));
+  box-shadow: 0 0 0 1px var(--pattern-active, var(--accent));
+}
+
+.pattern-swatch {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 32px;
+  overflow: hidden;
+  border-radius: 5px;
+  border: 1px solid var(--pattern-line, var(--chrome-line));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+.pattern-swatch-ink {
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.pattern-none::after {
+  content: '';
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  top: 50%;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.28;
+  transform: rotate(-28deg);
+}
+.pattern-option-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+
+/* The floating reader panel follows the paper's own accent and ink. */
+.theme-panel .pattern-grid {
+  --pattern-line: color-mix(in srgb, var(--r-ink) 16%, transparent);
+  --pattern-line-strong: color-mix(in srgb, var(--r-ink) 30%, transparent);
+  --pattern-muted: color-mix(in srgb, var(--r-ink) 55%, transparent);
+  --pattern-text: var(--r-ink);
+  --pattern-active: var(--r-accent);
+  --pattern-active-soft: color-mix(in srgb, var(--r-accent) 14%, transparent);
+}
+.theme-panel .pattern-option {
+  background: color-mix(in srgb, var(--r-ink) 4%, transparent);
+}
+.theme-panel .pattern-option:hover {
+  background: color-mix(in srgb, var(--r-ink) 7%, transparent);
+}
+.theme-panel .pattern-swatch {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--r-ink) 8%, transparent);
+}

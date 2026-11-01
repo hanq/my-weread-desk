@@ -32,10 +32,14 @@ type Theme struct {
 	MarginY          int     `json:"marginY"`
 	LineNumbers      bool    `json:"lineNumbers"`
 	Columns          int     `json:"columns"`
-	HeadingColor     string  `json:"headingColor"`
-	AccentColor      string  `json:"accentColor"`
-	SelectionColor   string  `json:"selectionColor"`
-	ParagraphStyle   string  `json:"paragraphStyle"`
+	// Pattern is a Chinese paper-pattern id rendered under the text; an empty
+	// value means no pattern. PatternOpacity is the overlay strength (0.04-0.4).
+	Pattern        string  `json:"pattern"`
+	PatternOpacity float64 `json:"patternOpacity"`
+	HeadingColor   string  `json:"headingColor"`
+	AccentColor    string  `json:"accentColor"`
+	SelectionColor string  `json:"selectionColor"`
+	ParagraphStyle string  `json:"paragraphStyle"`
 }
 
 // WindowSettings captures everything the OS needs to restore the window.
@@ -181,6 +185,8 @@ func DefaultTheme() Theme {
 		MarginY:        12,
 		LineNumbers:    false,
 		Columns:        0,
+		Pattern:        "",
+		PatternOpacity: 0.14,
 		HeadingColor:   "#1d1d1d",
 		AccentColor:    "#2f6fed",
 		SelectionColor: "rgba(47,111,237,0.22)",
@@ -249,10 +255,25 @@ func PresetThemes() []Theme {
 	return []Theme{paper, sepia, night, green, clear, mono}
 }
 
+// legacyWindowRadius is the radius every platform defaulted to before the
+// macOS-aligned value. Migration only rewrites this exact value.
+const legacyWindowRadius = 12
+
+// defaultWindowRadius matches the host window chrome. macOS draws a visibly
+// rounded, continuous corner on every window, so the default is larger there;
+// the Win32 target keeps the historical 12px so existing screenshots and window
+// geometry stay familiar.
+func defaultWindowRadius() int {
+	if runtime.GOOS == "darwin" {
+		return 16
+	}
+	return legacyWindowRadius
+}
+
 // Defaults returns a complete default settings document.
 func Defaults() *Settings {
 	return &Settings{
-		Version:      4,
+		Version:      5,
 		Theme:        DefaultTheme(),
 		CustomThemes: []Theme{},
 		Skin:         "none",
@@ -273,7 +294,7 @@ func Defaults() *Settings {
 			Frameless:   false,
 			Remembered:  false,
 			AlwaysOnTop: false,
-			Radius:      12,
+			Radius:      defaultWindowRadius(),
 		},
 		Reader: ReaderSettings{
 			PageTurnAnimation: true,
@@ -439,6 +460,9 @@ func mergeDefaults(in *Settings) *Settings {
 		// wide-window two-column layout; an explicit 2 is kept.
 		in.Theme.Columns = 0
 	}
+	if in.Theme.PatternOpacity <= 0 || in.Theme.PatternOpacity > 0.4 {
+		in.Theme.PatternOpacity = def.Theme.PatternOpacity
+	}
 	if in.Window.W <= 200 {
 		in.Window.W = def.Window.W
 	}
@@ -449,7 +473,13 @@ func mergeDefaults(in *Settings) *Settings {
 		in.Window.Opacity = 1
 	}
 	if oldVersion < 2 && in.Window.Radius == 0 {
-		// Settings written before the radius field existed get the old 12px look.
+		// Settings written before the radius field existed get the platform look.
+		in.Window.Radius = def.Window.Radius
+	}
+	if oldVersion < 5 && in.Window.Radius == legacyWindowRadius {
+		// Version 4 shipped a 12px radius everywhere. Only an untouched default
+		// is lifted to the current platform radius; a value the user picked with
+		// the slider is preserved.
 		in.Window.Radius = def.Window.Radius
 	}
 	if in.Hotkeys == nil || len(in.Hotkeys) == 0 {

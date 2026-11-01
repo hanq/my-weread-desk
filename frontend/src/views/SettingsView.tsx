@@ -5,6 +5,9 @@ import { Icon } from '../icons';
 import { store, toast, useApp } from '../store';
 import type { Settings, Theme } from '../types';
 import { SKIN_OPTIONS, avatarInitial, isChatSkin } from '../skins/registry';
+import { SHELF_MOTIFS, setShelfMotif, useShelfMotif } from '../skins/shelfMotifs';
+import { PatternGrid } from '../reader/PatternGrid';
+import { DEFAULT_PATTERN_OPACITY } from '../reader/patterns';
 
 type Section = 'appearance' | 'reading' | 'disguise' | 'window' | 'hotkeys' | 'about';
 
@@ -20,6 +23,7 @@ const NAV: [Section, string][] = [
 export function SettingsView() {
   const app = useApp();
   const settings = app.settings;
+  const shelfMotif = useShelfMotif();
   const [section, setSection] = useState<Section>('appearance');
   const [themes, setThemes] = useState<Theme[]>([]);
   const [fonts, setFonts] = useState<string[]>([]);
@@ -50,7 +54,22 @@ export function SettingsView() {
   if (!settings) return null;
 
   const update = (patch: Partial<Settings>) => persist({ ...settings, ...patch });
-  const updateTheme = (patch: Partial<Theme>) => persist({ ...settings, theme: { ...settings.theme, ...patch } });
+  const updateTheme = (patch: Partial<Theme>) => {
+    // Two columns are a page spread; selecting 双栏 switches out of scroll mode.
+    const reader =
+      patch.columns === 2 && settings.reader.pageMode === 'scroll'
+        ? { ...settings.reader, pageMode: 'page' as const }
+        : settings.reader;
+    persist({ ...settings, theme: { ...settings.theme, ...patch }, reader });
+  };
+  const setPageMode = (pageMode: 'page' | 'scroll') => {
+    // Scroll mode is intentionally single-column; clear a previous 双栏 choice.
+    const theme =
+      pageMode === 'scroll' && settings.theme.columns === 2
+        ? { ...settings.theme, columns: 1 }
+        : settings.theme;
+    persist({ ...settings, theme, reader: { ...settings.reader, pageMode } });
+  };
   const updateReader = (patch: Partial<Settings['reader']>) =>
     persist({ ...settings, reader: { ...settings.reader, ...patch } });
   const updateTyping = (patch: Partial<Settings['typing']>) =>
@@ -164,11 +183,50 @@ export function SettingsView() {
                       key={t.name}
                       className={`theme-swatch${t.name === settings.theme.name ? ' on' : ''}`}
                       style={{ background: t.background === 'transparent' ? '#20242e' : t.background, color: t.textColor }}
-                      onClick={() => persist({ ...settings, theme: { ...t } })}
+                      onClick={() =>
+                        persist({
+                          ...settings,
+                          theme: {
+                            ...t,
+                            pattern: settings.theme.pattern,
+                            patternOpacity: settings.theme.patternOpacity,
+                          },
+                        })
+                      }
                     >
                       <span>{t.name}</span>
                       <span className="sample" style={{ fontFamily: t.fontFamily }}>
                         Aa 文
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="settings-section">
+                <header>界面承载</header>
+                <div className="setting-row">
+                  <div className="label">
+                    <b>界面材质</b>
+                    <small>同步改变标题栏、侧栏与书架的材质与光感；阅读器主题独立</small>
+                  </div>
+                </div>
+                <div className="motif-choices">
+                  {SHELF_MOTIFS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`motif-choice${shelfMotif === option.id ? ' on' : ''}`}
+                      data-motif={option.id}
+                      aria-pressed={shelfMotif === option.id}
+                      onClick={() => setShelfMotif(option.id)}
+                    >
+                      <span className="motif-choice-glyph" aria-hidden="true">
+                        {option.glyph}
+                      </span>
+                      <span className="motif-choice-text">
+                        <b>{option.label}</b>
+                        <small>{option.hint}</small>
                       </span>
                     </button>
                   ))}
@@ -213,11 +271,21 @@ export function SettingsView() {
                     </button>
                   </div>
                 </Row>
-                <Row label="分栏" hint="双栏适合宽窗口；上下滚动固定单栏">
+                <Row label="分栏" hint="自动按窗口宽度；双栏会切到左右翻页；上下滚动固定单栏">
                   <div className="seg">
-                    {[1, 2].map((n) => (
-                      <button key={n} className={settings.theme.columns === n ? 'on' : ''} onClick={() => updateTheme({ columns: n })}>
-                        {n} 栏
+                    {(
+                      [
+                        [0, '自动'],
+                        [1, '单栏'],
+                        [2, '双栏'],
+                      ] as [number, string][]
+                    ).map(([n, label]) => (
+                      <button
+                        key={n}
+                        className={settings.theme.columns === n ? 'on' : ''}
+                        onClick={() => updateTheme({ columns: n })}
+                      >
+                        {label}
                       </button>
                     ))}
                   </div>
@@ -235,6 +303,34 @@ export function SettingsView() {
                 <ColorRow label="标题颜色" value={settings.theme.headingColor} onChange={(v) => updateTheme({ headingColor: v })} />
                 <ColorRow label="强调色" value={settings.theme.accentColor} onChange={(v) => updateTheme({ accentColor: v })} />
               </section>
+
+              <section className="settings-section">
+                <header>纸面底纹</header>
+                <div className="setting-row">
+                  <div className="label">
+                    <b>中国纹样</b>
+                    <small>叠在纸面上的低对比纹样，不影响正文识别；浓度可调</small>
+                  </div>
+                </div>
+                <PatternGrid
+                  value={settings.theme.pattern ?? ''}
+                  onChange={(pattern) => updateTheme({ pattern })}
+                  paper={settings.theme.surface}
+                  ink={settings.theme.textColor}
+                />
+                {settings.theme.pattern ? (
+                  <Slider
+                    label="底纹浓度"
+                    hint="数值越高，纹样越明显"
+                    value={settings.theme.patternOpacity ?? DEFAULT_PATTERN_OPACITY}
+                    min={0.04}
+                    max={0.32}
+                    step={0.01}
+                    onChange={(v) => updateTheme({ patternOpacity: v })}
+                    display={`${Math.round((settings.theme.patternOpacity ?? DEFAULT_PATTERN_OPACITY) * 100)}%`}
+                  />
+                ) : null}
+              </section>
             </>
           ) : null}
 
@@ -245,13 +341,13 @@ export function SettingsView() {
                 <div className="seg">
                   <button
                     className={settings.reader.pageMode !== 'scroll' ? 'on' : ''}
-                    onClick={() => updateReader({ pageMode: 'page' })}
+                    onClick={() => setPageMode('page')}
                   >
                     左右翻页
                   </button>
                   <button
                     className={settings.reader.pageMode === 'scroll' ? 'on' : ''}
-                    onClick={() => updateReader({ pageMode: 'scroll' })}
+                    onClick={() => setPageMode('scroll')}
                   >
                     上下滚动
                   </button>

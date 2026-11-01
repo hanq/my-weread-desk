@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import type { Block, Theme, TypingSettings } from '../types';
 import { BlockView, measureBlocks } from './BlockView';
 import type { Geometry } from './layout';
+import { readerPattern } from './patterns';
 
 interface Props {
   blocks: Block[];
@@ -73,6 +74,8 @@ export function ReaderCanvas({
 
   const showGutter = gutter && !forceNoGutter && mode === 'page';
   const scroll = mode === 'scroll';
+  const pattern = readerPattern(theme.pattern);
+  const spread = !scroll && !transparentPaper && geometry.perPage === 2;
   const lines = geometry.linesPerPage;
   const startLine = page * lines;
   const gutterNumbers = showGutter
@@ -95,7 +98,8 @@ export function ReaderCanvas({
         </div>
       ) : null}
 
-      <div className={`paper${transparentPaper ? ' no-surface' : ''}${scroll ? ' scroll-paper' : ''}`}>
+      <div className={`paper${transparentPaper ? ' no-surface' : ''}${scroll ? ' scroll-paper' : ''}${spread ? ' two-column' : ''}`}>
+        {!transparentPaper && pattern ? <span className="paper-pattern" aria-hidden="true" /> : null}
         <div
           className={`viewport${scroll ? ' scroll-mode' : ''}${scroll && !showScrollbar ? ' hide-scrollbar' : ''}`}
           ref={viewportRef}

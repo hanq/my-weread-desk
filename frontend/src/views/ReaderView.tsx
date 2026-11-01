@@ -31,6 +31,8 @@ export interface ReaderChromeProps {
   pinned: boolean;
   skin: string;
   floating: boolean;
+  /** Transparent surface: the fixed bars must not paint an opaque strip. */
+  transparent: boolean;
   autoHideBars: boolean;
   pageTurnAnimation: boolean;
   showStatusBar: boolean;
@@ -316,6 +318,23 @@ export function ReaderView({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId, chapterUid]);
+
+  // The shelf sorts by lastRead, but the server's readUpdateTime is only
+  // refreshed by a full shelf sync. Touch the local book as soon as the reader
+  // session loads so returning to the shelf reflects the just-read book
+  // without requiring an app restart.
+  useEffect(() => {
+    if (!session) return;
+    const now = Math.floor(Date.now() / 1000);
+    const books = store.get().books;
+    let changed = false;
+    const next = books.map((book) => {
+      if (book.id !== bookId || book.lastRead >= now) return book;
+      changed = true;
+      return { ...book, lastRead: now };
+    });
+    if (changed) store.set({ books: next });
+  }, [bookId, session?.book.id]);
 
   useEffect(() => {
     scrollGenerationRef.current += 1;
@@ -1038,9 +1057,15 @@ export function ReaderView({
       const current = store.get().settings;
       if (!current) return;
       const theme = { ...current.theme, ...patch, name: current.theme.name || '自定义' };
+      // Two columns are a page spread. Keep the reader from silently staying in
+      // single-column scroll mode when the user picks 双栏.
+      const reader =
+        patch.columns === 2 && current.reader.pageMode === 'scroll'
+          ? { ...current.reader, pageMode: 'page' as const }
+          : current.reader;
       // Local-first: sliders repaint immediately and the disk write is debounced
       // so dragging the size slider does not issue one full settings save per px.
-      store.set({ settings: { ...current, theme } });
+      store.set({ settings: { ...current, theme, reader } });
       pendingTheme.current = theme;
       if (themeTimer.current != null) window.clearTimeout(themeTimer.current);
       themeTimer.current = window.setTimeout(() => {
@@ -1059,9 +1084,30 @@ export function ReaderView({
       themeTimer.current = null;
     }
     pendingTheme.current = null;
-    store.set({ settings: { ...current, theme: { ...t } } });
-    void api.saveSettings({ ...current, theme: { ...t } }).then((s) => store.set({ settings: s }));
+    const reader =
+      t.columns === 2 && current.reader.pageMode === 'scroll'
+        ? { ...current.reader, pageMode: 'page' as const }
+        : current.reader;
+    store.set({ settings: { ...current, theme: { ...t }, reader } });
+    void api
+      .saveSettings({ ...current, theme: { ...t }, reader })
+      .then((s) => store.set({ settings: s }));
   }, []);
+
+  // A theme saved with columns=2 while scroll mode was active would otherwise
+  // stay single-column forever. Normalise that legacy combination once the
+  // reader mounts; new selections are switched in updateTheme above.
+  useEffect(() => {
+    if (theme.columns !== 2 || mode !== 'scroll') return;
+    const current = store.get().settings;
+    if (!current) return;
+    const next = { ...current, reader: { ...current.reader, pageMode: 'page' as const } };
+    store.set({ settings: next });
+    void api
+      .saveSettings(next)
+      .then((s) => store.set({ settings: s }))
+      .catch(() => undefined);
+  }, [mode, theme.columns]);
 
   const toggleZen = useCallback(() => {
     void api.setZen(!zen).then((w) => {
@@ -1243,6 +1289,7 @@ export function ReaderView({
     pinned,
     skin,
     floating,
+    transparent: floating || theme.background === 'transparent' || theme.surface === 'transparent',
     autoHideBars: Boolean(settings?.reader.autoHideBars),
     pageTurnAnimation: pageAnimated,
     showStatusBar: settings?.reader.showStatusBar !== false,
@@ -1340,8 +1387,8 @@ function plainReader(p: ReaderChromeProps) {
       className={`reader${p.zen ? ' zen' : ''}${p.typing ? ' typing' : ''}${p.idle ? ' idle' : ''}${
         p.zen && !p.idle ? ' show-chrome' : ''
       }${p.autoHideBars ? ' auto-hide' : ''}${p.pageTurnAnimation ? '' : ' no-anim'}${p.floating ? ' floating' : ''}${
-        p.mode === 'scroll' ? ' scroll-mode' : ''
-      }`}
+        p.transparent ? ' transparent' : ''
+      }${p.mode === 'scroll' ? ' scroll-mode' : ''}`}
       style={p.themeStyle}
       onContextMenu={
         p.floating

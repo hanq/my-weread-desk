@@ -108,6 +108,32 @@
   cursor: none;
 }
 
+/* Transparent themes must stay transparent through the fixed bars too. The
+ * controls keep a soft shadow instead of a surface fill. */
+.reader.transparent .reader-bar,
+.reader.transparent.zen.show-chrome .reader-bar {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-color: transparent;
+}
+.reader.transparent .reader-bar.top,
+.reader.transparent .reader-bar.bottom {
+  border: 0;
+}
+.reader.transparent .reader-bar .chapter-title,
+.reader.transparent .reader-bar .icon-btn,
+.reader.transparent .reader-progress .pct,
+.reader.transparent .page-jump,
+.reader.transparent .reader-progress input {
+  text-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.6),
+    0 0 1px rgba(0, 0, 0, 0.7);
+}
+.reader.transparent .reader-bar .icon-btn:hover {
+  background: color-mix(in srgb, var(--r-ink) 10%, transparent);
+}
+
 /* ---------------------------------------------------------------- stage */
 
 .reader-stage {
@@ -149,6 +175,29 @@
 .paper.no-surface {
   background: transparent;
   box-shadow: none;
+}
+
+/* Open-book spread: a restrained central crease between the two columns. */
+.paper.two-column::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 4%;
+  bottom: 4%;
+  width: 1px;
+  transform: translateX(-50%);
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--r-ink) 16%, transparent) 12%,
+    color-mix(in srgb, var(--r-ink) 16%, transparent) 88%,
+    transparent 100%
+  );
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--r-ink) 8%, transparent),
+    0 0 2px color-mix(in srgb, var(--r-ink) 10%, transparent);
 }
 
 .viewport {
@@ -750,5 +799,12 @@
 @media (prefers-reduced-motion: reduce) {
   .image-lightbox {
     animation: none;
+  }
+}
+
+/* Match the window frame's continuous corners where the engine supports it. */
+@supports (corner-shape: squircle) {
+  .image-lightbox {
+    corner-shape: squircle;
   }
 }
