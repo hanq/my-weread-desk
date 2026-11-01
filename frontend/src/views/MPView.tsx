@@ -2,35 +2,59 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { api } from '../api';
 import { Icon } from '../icons';
-import { toast, useApp } from '../store';
+import { navigate, toast, useApp } from '../store';
 import { BlockView, measureBlocks } from '../reader/BlockView';
 import { fontStack } from '../reader/themeVars';
+import { proxiedImageUrl } from '../bookCover';
 import type { Book, ChapterContent, MPArticle } from '../types';
 
-export function MPView() {
+export function MPView({ initialBookId }: { initialBookId?: string }) {
   const app = useApp();
   const theme = app.settings?.theme;
   const sources = useMemo(() => app.books.filter((b) => b.isMp), [app.books]);
-  const [active, setActive] = useState<Book | null>(sources[0] ?? null);
+  const [active, setActive] = useState<Book | null>(
+    () => sources.find((b) => b.id === initialBookId) ?? sources[0] ?? null,
+  );
   const [articles, setArticles] = useState<MPArticle[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [open, setOpen] = useState<ChapterContent | null>(null);
 
   useEffect(() => {
-    if (!active) setActive(sources[0] ?? null);
-  }, [sources, active]);
+    const target = initialBookId ? sources.find((b) => b.id === initialBookId) : undefined;
+    if (target) {
+      if (active?.id !== target.id) setActive(target);
+      return;
+    }
+    if (!active || !sources.some((b) => b.id === active.id)) {
+      setActive(sources[0] ?? null);
+    }
+  }, [sources, initialBookId, active]);
 
-  useEffect(() => {
-    if (!active) return;
+  const load = (accountId: string) => {
     setLoading(true);
+    setError('');
     api
-      .mpArticles(active.id, 0)
+      .mpArticles(accountId, 0)
       .then((rows) => setArticles(rows ?? []))
       .catch((e: unknown) => {
+        const message = String((e as Error).message || e);
         setArticles([]);
-        toast(String((e as Error).message || e), 'error');
+        setError(message);
+        toast(message, 'error');
       })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (!active) {
+      setArticles([]);
+      setError('');
+      return;
+    }
+    load(active.id);
+    // The active account id is the only trigger; load is render-scoped.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
   const read = async (a: MPArticle) => {
@@ -45,6 +69,9 @@ export function MPView() {
   return (
     <>
       <div className="page-head">
+        <button className="icon-btn" onClick={() => navigate({ name: 'shelf' })} title="返回书架">
+          <Icon name="left" />
+        </button>
         <h1>公众号</h1>
         <span className="sub">{sources.length} 个订阅</span>
         <div className="grow" />
@@ -83,9 +110,23 @@ export function MPView() {
                 <div className="empty" style={{ height: 180 }}>
                   <div className="spinner" />
                 </div>
+              ) : error ? (
+                <div className="empty" style={{ height: 180 }}>
+                  <p>{error}</p>
+                  {active ? (
+                    <button className="btn btn-ghost" onClick={() => load(active.id)}>
+                      重试
+                    </button>
+                  ) : null}
+                </div>
               ) : (articles ?? []).length === 0 ? (
                 <div className="empty" style={{ height: 180 }}>
                   <p>暂无文章</p>
+                  {active ? (
+                    <button className="btn btn-ghost" onClick={() => load(active.id)}>
+                      刷新
+                    </button>
+                  ) : null}
                 </div>
               ) : (
                 <div className="article-list">
@@ -93,10 +134,13 @@ export function MPView() {
                     <div key={a.reviewId} className="article-row" onClick={() => void read(a)}>
                       {a.cover ? (
                         <img
-                          src={a.cover}
+                          src={proxiedImageUrl(active?.id ?? '', a.cover)}
                           alt=""
                           style={{ width: 46, height: 46, borderRadius: 6, objectFit: 'cover', flex: 'none' }}
                           referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            e.currentTarget.src = '/mp-cover.svg';
+                          }}
                         />
                       ) : (
                         <div className="avatar" style={{ borderRadius: 6 }}>

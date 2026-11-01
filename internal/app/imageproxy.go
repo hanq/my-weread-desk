@@ -133,6 +133,9 @@ func (a *App) proxyImage(ctx context.Context, bookID string, chapterUID int64, s
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	referer := protocol.ReaderURL(bookID, chapterUID)
+	if protocol.IsMPBook(bookID) {
+		referer = protocol.MPReaderURL(bookID)
+	}
 	data, err := a.web.DownloadResourceAs(ctx, src, referer)
 	if err != nil {
 		a.logf("图片代理失败：book=%s src=%s err=%v", bookID, src, err)

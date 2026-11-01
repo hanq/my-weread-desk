@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900" width="600" height="900" role="img" aria-label="公众号默认封面">
+  <defs>
+    <linearGradient id="mp-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#264a3f"/>
+      <stop offset="1" stop-color="#11251f"/>
+    </linearGradient>
+    <radialGradient id="mp-glow" cx="30%" cy="18%" r="85%">
+      <stop offset="0" stop-color="#8ecbb8" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#8ecbb8" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="mp-grain" width="6" height="6" patternUnits="userSpaceOnUse">
+      <path d="M0 0h6M0 3h6" stroke="#f1e7d2" stroke-opacity=".025" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="600" height="900" fill="url(#mp-bg)"/>
+  <rect width="600" height="900" fill="url(#mp-glow)"/>
+  <rect width="600" height="900" fill="url(#mp-grain)"/>
+
+  <rect x="34" y="34" width="532" height="832" rx="4" fill="none" stroke="#c9a86a" stroke-opacity=".34"/>
+  <circle cx="300" cy="315" r="126" fill="none" stroke="#8ecbb8" stroke-opacity=".3"/>
+  <circle cx="300" cy="315" r="90" fill="none" stroke="#8ecbb8" stroke-opacity=".16"/>
+
+  <g>
+    <rect x="218" y="271" width="164" height="104" rx="16" fill="#f1e7d2" fill-opacity=".95"/>
+    <path d="M218 375l-24 32 44-12" fill="#f1e7d2" fill-opacity=".95"/>
+    <path d="M250 305h100M250 329h76M250 353h48" stroke="#1d3b33" stroke-width="8" stroke-linecap="round" opacity=".62"/>
+  </g>
+
+  <text x="300" y="560" text-anchor="middle" font-family="'Songti SC','Noto Serif SC','SimSun',serif" font-size="62" letter-spacing="12" fill="#f1e7d2">公众号</text>
+  <text x="300" y="610" text-anchor="middle" font-family="'Songti SC','Noto Serif SC','SimSun',serif" font-size="18" letter-spacing="7" fill="#a8c7bc">微信读书 · OFFICIAL</text>
+
+  <path d="M220 650h160" stroke="#c9a86a" stroke-opacity=".4"/>
+  <text x="300" y="704" text-anchor="middle" font-family="'Songti SC','Noto Serif SC','SimSun',serif" font-size="14" letter-spacing="5" fill="#7fa39a">READ · THINK · SHARE</text>
+
+  <g transform="translate(440 748) rotate(-4)">
+    <rect width="76" height="76" rx="3" fill="#b23a2c"/>
+    <text x="38" y="52" text-anchor="middle" font-family="'Songti SC','Noto Serif SC','SimSun',serif" font-size="38" fill="#f8ebd0">公</text>
+  </g>
+</svg>
