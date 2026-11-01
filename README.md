@@ -28,7 +28,7 @@
 
 环境要求：
 
-- **Go 1.20+**（`go.mod` 固定 `go 1.20`）
+- **Go 1.21+**（`go.mod` 固定 `go 1.21`；间接依赖要求 1.21）
 - **Node.js 20+**
 - **Wails v2.7.1 CLI**：`go install github.com/wailsapp/wails/v2/cmd/wails@v2.7.1`
 - Windows 10/11 + WebView2 Runtime
@@ -40,7 +40,7 @@ make test       # Go 单元测试
 make lint       # gofmt 检查 + go vet + 前端类型检查
 ```
 
-> 本机 `go` 为 1.20 时可直接构建。CLI v2.14 也能构建 v2.7.1 模块（会提示版本不一致），
+> 本机 `go` 为 1.21 或更高时可直接构建。CLI v2.14 也能构建 v2.7.1 模块（会提示版本不一致），
 > 建议安装匹配的 CLI：`go install github.com/wailsapp/wails/v2/cmd/wails@v2.7.1`。
 
 前端可脱离 Wails 单独预览（使用内置假数据后端，不访问网络）：

@@ -5,7 +5,7 @@
 
 ## 项目概览
 
-微信读书桌面客户端（Wails v2.7.1 + Go 1.20 + React 19 / Vite 7 / TypeScript）。
+微信读书桌面客户端（Wails v2.7.1 + Go 1.21 + React 19 / Vite 7 / TypeScript）。
 
 - 后端：`internal/`，Wails 绑定层在 `internal/app`，协议实现分 `eink` / `web` 两条通道。
 - 前端：`frontend/src`，视图在 `views/`，分页引擎在 `reader/`，伪装皮肤在 `skins/`。
@@ -23,11 +23,12 @@ make lint       # gofmt + go vet + tsc --noEmit
 
 ### Go 工具链注意
 
-`go.mod` 要求 **go 1.20**。Wails 固定在 **v2.7.1**（v2.9+ 要求 Go 1.21，v2.14 要求 1.25），
-SQLite 驱动为 v1.30.1，x/net 与 x/sys 也锁定在同期版本。升级其中任何一个都要同步提高
-`go` 指令，否则 Go 1.20 无法构建。
+`go.mod` 要求 **go 1.21**。Wails 固定在 **v2.7.1**（v2.9+ 要求 Go 1.21，v2.14 要求 1.25），
+SQLite 驱动为 v1.30.1，x/net 与 x/sys 也锁定在同期版本。间接依赖
+`github.com/leaanthony/u v1.1.0` 的 `go.mod` 声明 Go 1.21，因此 1.20 工具链无法构建；
+升级任何依赖都要同步检查 `go` 指令是否仍然满足整个模块图。
 
-本机 PATH 中的 `go` 为 1.20 时可以直接构建：
+本机 PATH 中的 `go` 为 1.21 或更高时可以直接构建：
 
 ```bash
 go build ./...
@@ -153,9 +154,27 @@ IM 皮肤复用 `ReaderView` 的 `reveal` 与 `BlockView`，由 `ChatTranscript`
 
 ### 12. 响应式布局
 
-`frontend/src/styles/responsive.css` 定义壳层断点：>1080 完整侧栏；761–1080 为 64px 图标栏；≤760 改为标题栏菜单抽屉（`.shell.nav-open` + `.nav-backdrop`）。≤900 书架工具栏换行；≤680/560 收紧间距与书封最小宽度；书封列宽用 `clamp()` 随窗口缩放。
+`frontend/src/styles/responsive.css` 定义壳层断点：>980 完整侧栏；761–980 为 64px 图标栏（悬停显示菜单名）；≤760 改为标题栏菜单抽屉（`.shell.nav-open` + `.nav-backdrop`）。图标栏断点必须低于默认窗口宽度 1080，否则新装用户永远看到收起状态。≤900 书架工具栏换行；≤680/560 收紧间距与书封最小宽度；书封列宽用 `clamp()` 随窗口缩放。
 
 新增页面必须保证在 560×380 下可操作：工具栏里的分段控件用 `.seg`（`flex: none` + 按钮 `white-space: nowrap`），不要给它们设置可收缩宽度；抽屉导航在路由切换或点击背景时关闭。
+
+### 13. 读书助手与故事穿越的边界
+
+两者共用 AI 配置（`settings.ai`）与章节缓存，但产品定位不同，不要互相兜底：
+
+- **读书助手**（`assistant`）：只读。基于已缓存章节建立 RAG 索引，回答原文事实、定位情节，引用必须能回到 `chapterUid` + `blockStart`。不生成剧情、不改写状态。
+- **故事穿越**（`traversal` / `branch`）：创作。把已缓存章节抽成时间线，在锚点约束下分叉并生成平行世界。所有生成内容都属于世界线，不写回原书。
+
+入口必须成对出现：侧栏「智能」组、书架右键菜单、书籍详情页都提供两者，并在路由里携带可选 `bookId`。从书籍入口进入时必须直接落到该书，同时允许用户在页面内切换书籍。新增入口时同步 `frontend/src/store.ts` 的 `Route`、`App.tsx` 的路由分支与对应视图的 `initialBookId`。
+
+### 14. 书籍 AI 类型与准备门禁
+
+- 类型保存在 `book_ai`（`kind` / `kind_source`），不写回 `book` 行；书架同步不会覆盖用户的 `user` 更正。
+- `library.ClassifyBook` 只做保守规则识别；分类不确定时落到 `other`，不能默认当小说。
+- `App.AIStatus(bookId)` 返回 `text` / `scenes` / `world` 三段状态与 `ask` / `immerse` / `rewrite` 能力。
+- 所有 AI 入口必须先过 `requireTextIndex`；穿越还要过 `requireFiction` + `requireScenes`；改写还要过 `requireWorld`。不要只在前端隐藏按钮。
+- 文本索引校验 `chunker_version`，版本不符标记 `stale`。
+- `BookDetailView` 提供 AI 类型更正；`ShelfView` 只在 `fiction` 上显示「故事穿越」。
 
 ## 验证清单
 

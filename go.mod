@@ -1,11 +1,11 @@
 module my-weread-desk
 
-// Pinned to Go 1.20 so the project builds with the toolchain installed on the
-// target Windows machines. Wails v2.7.1 is the newest release whose go.mod
-// still targets 1.20; v2.9+ requires 1.21 and v2.14 requires 1.25. The SQLite
-// driver and x/* modules are pinned to the same 2023-era generation for the
-// same reason. Upgrading any of them requires bumping this directive too.
-go 1.20
+// Go 1.21 is the floor: Wails v2.7.1 and the SQLite driver still target 1.20,
+// but the indirect module github.com/leaanthony/u v1.1.0 requires Go 1.21, so
+// the module graph cannot be built with a 1.20 toolchain. Keep the dependency
+// set on this 2023-era generation; Wails v2.9+ also requires 1.21 and v2.14
+// requires 1.25, so a Wails upgrade still needs its own review.
+go 1.21
 
 require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
